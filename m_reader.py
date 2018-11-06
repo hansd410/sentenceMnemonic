@@ -144,6 +144,10 @@ class MnemonicReader(nn.Module):
         # Encode question with RNN
         q = self.encoding_rnn(torch.cat(qrnn_input, 2), x2_mask)
 
+		# sangdo. sentence attention addition
+
+
+
         # Align and aggregate
         c_check = c
         for i in range(self.args.hop):
