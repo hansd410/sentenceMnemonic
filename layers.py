@@ -240,7 +240,7 @@ class MemoryAnsPointer(nn.Module):
             self.FFNs_end.append(FeedForwardNetwork(x_size+y_size+2*hidden_size, hidden_size, 1, dropout_rate))
             self.SFUs_end.append(SFU(y_size, 2*hidden_size))
     
-    def forward(self, x, y, x_mask, y_mask):
+    def forward(self, x, y, x_mask, y_mask, ans_sent_bound):
         z_s = y[:,-1,:].unsqueeze(1) # [B, 1, I]
         z_e = None
         s = None

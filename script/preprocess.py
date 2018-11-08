@@ -136,20 +136,22 @@ def process_dataset(data, tokenizer, workers=None):
 					ans_tokens.append(found)
 
 		senIdxList = []
-		ansSenIdxList = []
 		senBeginIndex =0
 		for sen in range(len(s_tokensList[data['qid2cid'][idx]])):
 			senTokenList = s_tokensList[data['qid2cid'][idx]][sen]['words']
 			senEndIndex = senBeginIndex+len(senTokenList)
 			ansSenIdx = [senBeginIndex,senEndIndex]
 			senIdxList.append(ansSenIdx)
-
-			for ans_idx in ans_tokens:
-				ans_begin_idx, ans_end_idx = ans_idx
-				if(senBeginIndex <= ans_begin_idx and senEndIndex > ans_end_idx):
-					ansSenIdxList.append(ansSenIdx)
-
 			senBeginIndex += len(senTokenList)
+
+		ansSenIdxList = []
+		for i in range(len(ans_tokens)):
+			ans_begin_idx, ans_end_idx = ans_tokens[i]
+			for j in range(len(senIdxList)):
+				senBeginIndex, senEndIndex = senIdxList[j]
+				if(senBeginIndex <= ans_begin_idx and senEndIndex > ans_end_idx):
+					ansSenIdxList.append(j)
+
 
 		yield {
 			'id': data['qids'][idx],
