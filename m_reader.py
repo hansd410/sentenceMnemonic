@@ -155,25 +155,33 @@ class MnemonicReader(nn.Module):
 		sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
 							   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
 							   c.size(2))
-		sent_word_emb.fill_(-1000)
+		sent_word_emb.fill_(-float('inf'))
+		#print(sent_word_emb)
 		for i, sent_idx in enumerate(sent_idx_list):
 			for j, (begin, end) in enumerate(sent_idx):
+				print(sent_word_emb[i, j, :end-begin, :].size())
+				print(c[i, begin:end, :].size())
+				print(begin, end, c.size(1))
 				sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
 		sent_word_emb = sent_word_emb.max(dim=2)[0]  # batch_size x max_sent_size x feat_dim
 
 		sent_emb = self.sent_embedding(sent_word_emb.transpose(1, 2))  # batch_size x projected_feature_dim x max_sent_size
 
-		q_proj = self.sent_embedding((q + (x2_mask.float().unsqueeze(2) * -1000)).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
+		q_proj = self.sent_embedding((q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), -float('inf'))).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
 
 		sent_score = (sent_emb * q_proj).sum(dim=1)  # batch_size x max_sent_size
 
 		for i, sent_idx in enumerate(sent_idx_list):
 			if len(sent_idx) != sent_score.size(1):
 				sent_score[i, len(sent_idx):] = -1e10
+		print(sent_score)
 		if self.training:
 			sent_score = F.log_softmax(sent_score, dim=1)
+			print('log_softmax')
 		else:
 			sent_score = F.softmax(sent_score, dim=1)
+			print('softmax')
+		print(sent_score)
 
 		# Align and aggregate
 		c_check = c
@@ -185,7 +193,6 @@ class MnemonicReader(nn.Module):
 			c_check = self.aggregate_rnns[i].forward(c_hat, x1_mask)
 
 		# Predict
-		ans_sent_bounds = [sent_bound[ans_idx] for sent_bound, ans_idx in zip(sent_idx_list, ans_sent_idx_list)]
-		start_scores, end_scores = self.mem_ans_ptr.forward(c_check, q, x1_mask, x2_mask, ans_sent_bounds)
+		start_scores, end_scores = self.mem_ans_ptr.forward(c_check, q, x1_mask, x2_mask, sent_idx_list, ans_sent_idx_list)
 		
 		return start_scores, end_scores, sent_score

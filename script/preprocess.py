@@ -104,13 +104,16 @@ def process_dataset(data, tokenizer, workers=None):
 	workers.close()
 	workers.join()
 
-	workers = make_pool(initargs=())
-	s_tokensList = []
-	for sent in data['sentences']:
-		s_tokens = workers.map(tokenize, sent)
-		s_tokensList.append(s_tokens)
-	workers.close()
-	workers.join()
+	#print(len(data['sentences']))
+	#print(len(c_tokens))
+
+#	workers = make_pool(initargs=())
+#	s_tokensList = []
+#	for sent in data['sentences']:
+#		s_tokens = workers.map(tokenize, sent)
+#		s_tokensList.append(s_tokens)
+#	workers.close()
+#	workers.join()
 
 	for idx in range(len(data['qids'])):
 		question = q_tokens[idx]['words']
@@ -136,22 +139,42 @@ def process_dataset(data, tokenizer, workers=None):
 					ans_tokens.append(found)
 
 		senIdxList = []
-		senBeginIndex =0
-		for sen in range(len(s_tokensList[data['qid2cid'][idx]])):
-			senTokenList = s_tokensList[data['qid2cid'][idx]][sen]['words']
-			senEndIndex = senBeginIndex+len(senTokenList)
-			ansSenIdx = [senBeginIndex,senEndIndex]
-			senIdxList.append(ansSenIdx)
-			senBeginIndex += len(senTokenList)
+		senBeginWordIndex =0
+		senEndCharIndex = 0
+		#for sen in range(len(s_tokensList[data['qid2cid'][idx]])):
+		#	senEndCharIndex += len(' '.join(s_tokensList[data['qid2cid'][idx]][sen]['words']))
+		sentList=data['sentences'][data['qid2cid'][idx]]
+		for j in range(len(sentList)):
+			sent = sentList[j]
+			if(j!=0):
+				senEndCharIndex+=1
+			senEndCharIndex +=len(sent)
+
+			for i in range(len(offsets)):
+				if(i!=len(offsets)-1):
+					charNextBeginIndex = offsets[i+1][0]
+					if(senEndCharIndex-1 < charNextBeginIndex):
+						senIdxList.append([senBeginWordIndex,i+1])
+						senBeginWordIndex = i+1
+						break
+				else:
+					senIdxList.append([senBeginWordIndex,i+1])
+					break
+				
 
 		ansSenIdxList = []
 		for i in range(len(ans_tokens)):
 			ans_begin_idx, ans_end_idx = ans_tokens[i]
 			for j in range(len(senIdxList)):
-				senBeginIndex, senEndIndex = senIdxList[j]
-				if(senBeginIndex <= ans_begin_idx and senEndIndex > ans_end_idx):
+				senBeginWordIndex, senEndIndex = senIdxList[j]
+				if(senBeginWordIndex <= ans_begin_idx and senEndIndex >= ans_end_idx):
 					ansSenIdxList.append(j)
 
+#		if(len(offsets)==senIdxList[-1][1]):
+#			print(document)
+#			print(ans_tokens)
+#			print(senIdxList)
+#			print(ansSenIdxList)
 
 		yield {
 			'id': data['qids'][idx],

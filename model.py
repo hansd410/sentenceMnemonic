@@ -270,6 +270,17 @@ class DocReader(object):
 			raise RuntimeError('Unsupported optimizer: %s' %
 							   self.args.optimizer)
 
+	def sent_divided_nll_loss(self, scores_s, scores_e, scores_sent, targets_s, targets_e, sent_idx_list, ans_sent_idx_list):
+		loss_s = 0
+		loss_e = 0
+		loss_sent = 0
+		for score_s, score_e, score_sent, target_s, target_e, sent_idx, ans_sent_idx in zip(scores_s, scores_e, scores_sent, targets_s, targets_e, sent_idx_list, ans_sent_idx_list):
+			loss_s -= score_s[ans_sent_idx, target_s-sent_idx[ans_sent_idx][0]]
+			loss_e -= score_e[ans_sent_idx, target_e-sent_idx[ans_sent_idx][0]]
+			loss_sent -= score_sent[ans_sent_idx]
+
+		return loss_s + loss_e + loss_sent
+
 	# --------------------------------------------------------------------------
 	# Learning
 	# --------------------------------------------------------------------------
@@ -293,10 +304,12 @@ class DocReader(object):
 			target_e = Variable(ex[-2])
 
 		# Run forward
-		score_s, score_e = self.network(*inputs)
+		# score_s, score_e = self.network(*inputs)
+		score_s, score_e, score_sent = self.network(*inputs)
 
 		# Compute loss and accuracies
-		loss = F.nll_loss(score_s, target_s) + F.nll_loss(score_e, target_e)
+		# loss = F.nll_loss(score_s, target_s) + F.nll_loss(score_e, target_e) 
+		loss = self.sent_divided_nll_loss(score_s, score_e, score_sent, target_s, target_e, inputs[-2], inputs[-1])
 
 		# Clear gradients and run backward
 		self.optimizer.zero_grad()
