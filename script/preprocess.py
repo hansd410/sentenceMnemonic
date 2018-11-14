@@ -127,6 +127,8 @@ def process_dataset(data, tokenizer, workers=None):
 	tokenCountError =0 
 	ansSenError = 0
 	ansOverlapCount = 0
+	ansBESameCount = 0
+
 	emptySenCaseList = []
 	for idx in range(len(data['qids'])):
 		time0 = time.time()
@@ -183,6 +185,8 @@ def process_dataset(data, tokenizer, workers=None):
 
 			for j in range(len(senIdxList)):
 				senBeginWordIndex, senEndWordIndex = senIdxList[j]
+				if(senBeginWordIndex==senEndWordIndex):
+					ansBESameCount += 1
 				if(senBeginWordIndex <= ans_begin_idx and senEndWordIndex >= ans_end_idx_bound):
 					ansSenIdxList.append(j)
 					break
@@ -273,6 +277,9 @@ def process_dataset(data, tokenizer, workers=None):
 	print(tokenCountError)
 	print("ans sen error")
 	print(ansSenError)
+	print("ans be same error")
+	print(ansBESameCount)
+
 
 
 # -----------------------------------------------------------------------------

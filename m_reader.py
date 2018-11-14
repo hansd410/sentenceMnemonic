@@ -155,7 +155,9 @@ class MnemonicReader(nn.Module):
 		sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
 							   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
 							   c.size(2)) # batch * max sent len * max word len * fit_dim
-		sent_word_emb.fill_(-float('inf'))
+		#sent_word_emb.fill_(-float('inf'))
+		sent_word_emb.fill_(-1e10)
+
 
 		# masking tensor
 		sent_score_mask = c.new()
@@ -169,35 +171,12 @@ class MnemonicReader(nn.Module):
 				#print(begin, end, c.size(1))
 				sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
 		sent_word_emb = sent_word_emb.max(dim=2)[0]  # batch_size x max_sent_size x feat_dim
-		print("sent word emb")
-		print(sent_word_emb)
-		sent_word_emb = sent_word_emb*sent_score_mask
-		#print(sent_word_emb)
-		exit()
+		#sent_word_emb = sent_word_emb*sent_score_mask
 
 		sent_emb = self.sent_embedding(sent_word_emb.transpose(1, 2))  # batch_size x projected_feature_dim x max_sent_size
 
 		q_proj = self.sent_embedding((q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), -float('inf'))).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
 		sent_score = (sent_emb * q_proj).sum(dim=1)  # batch_size x max_sent_size
-
-		sent_word_emb2 = sent_word_emb*sent_score_mask
-		sent_emb2 = self.sent_embedding(sent_word_emb2.transpose(1, 2))  # batch_size x projected_feature_dim x max_sent_size
-		sent_score2 = (sent_emb2 * q_proj).sum(dim=1)  # batch_size x max_sent_size
-
-		
-		for i, sent_idx in enumerate(sent_idx_list):
-			if len(sent_idx) != sent_score.size(1):
-				sent_score[i, len(sent_idx):] = -1e10
-				sent_score2[i,len(sent_idx):] = -1e10
-
-
-		if(torch.all(torch.eq(sent_score,sent_score2))):
-			print("Sent scores are exactly same")
-			print(torch.eq(sent_score,sent_score2))
-		else:
-			print("sent scores are different")
-			print(torch.eq(sent_score,sent_score2))
-		exit()
 
 	
 		if self.training:
