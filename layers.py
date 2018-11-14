@@ -273,10 +273,10 @@ class MemoryAnsPointer(nn.Module):
 			sent_s.fill_(-float('inf'))
 			sent_e.fill_(-float('inf'))
 
-			for i, sent_idx in enumerate(sent_idx_list):
-				for j, (begin, end) in enumerate(sent_idx):
-					sent_s[i, j, :end-begin] = s[i, begin:end]
-					sent_e[i, j, :end-begin] = e[i, begin:end]
+			for j, sent_idx in enumerate(sent_idx_list):
+				for k, (begin, end) in enumerate(sent_idx):
+					sent_s[j, k, :end-begin] = s[j, begin:end]
+					sent_e[j, k, :end-begin] = e[j, begin:end]
 
 			if self.training:
 				# In training we output log-softmax for NLL

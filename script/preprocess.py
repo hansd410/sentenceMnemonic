@@ -21,7 +21,8 @@ from multiprocessing.util import Finalize
 from functools import partial
 from spacy_tokenizer import SpacyTokenizer
 
-import nltk
+#import nltk
+import spacy
 
 # ------------------------------------------------------------------------------
 # Tokenize + annotate.
@@ -29,6 +30,7 @@ import nltk
 
 TOK = None
 ANNTOTORS = {'lemma', 'pos', 'ner'}
+nlp = spacy.load('en')
 
 
 def init():
@@ -59,6 +61,8 @@ def tokenize(text):
 
 def load_dataset(path):
 	"""Load json file and store fields separately."""
+#	nlp=spacy.load('en')
+
 	with open(path) as f:
 		data = json.load(f)['data']
 	output = {'qids': [], 'questions': [], 'answers': [],
@@ -67,8 +71,11 @@ def load_dataset(path):
 		for paragraph in article['paragraphs']:
 			output['contexts'].append(paragraph['context'])
 
-			context=paragraph['context']
-			sentenceList=nltk.sent_tokenize(context)
+			context=paragraph['context'].replace('\n', ' ')
+			nlp_context=nlp(context)
+			sentenceList = [sent for sent in nlp_context.sents]
+			#sentenceTokenIndexList = [[len(sent),] for sent in nlp_context.sents]
+			#sentenceList=nltk.sent_tokenize(context)
 			output['sentences'].append(sentenceList)
 
 			for qa in paragraph['qas']:
@@ -91,6 +98,7 @@ def find_answer(offsets, begin_offset, end_offset):
 
 
 def process_dataset(data, tokenizer, workers=None):
+#	nlp = spacy.load('en')
 	"""Iterate processing (tokenize, parse, etc) dataset multithreaded."""
 	make_pool = partial(Pool, workers, initializer=init)
 
@@ -114,8 +122,15 @@ def process_dataset(data, tokenizer, workers=None):
 #		s_tokensList.append(s_tokens)
 #	workers.close()
 #	workers.join()
-
+	
+	emptySenError = 0
+	tokenCountError =0 
+	ansSenError = 0
+	ansOverlapCount = 0
+	emptySenCaseList = []
 	for idx in range(len(data['qids'])):
+		time0 = time.time()
+
 		question = q_tokens[idx]['words']
 		question_char = q_tokens[idx]['chars']
 		qlemma = q_tokens[idx]['lemma']
@@ -130,6 +145,7 @@ def process_dataset(data, tokenizer, workers=None):
 		cner = c_tokens[data['qid2cid'][idx]]['ner']
 		
 		ans_tokens = []
+		ans_text = []
 		if len(data['answers']) > 0:
 			for ans in data['answers'][idx]:
 				found = find_answer(offsets,
@@ -137,44 +153,100 @@ def process_dataset(data, tokenizer, workers=None):
 									ans['answer_start'] + len(ans['text']))
 				if found:
 					ans_tokens.append(found)
+					ans_text.append(ans['text'])
 
+		time1= time.time()
+		# MAKE SENTENCE INDEX LIST [word begin index, word end index + 1]
 		senIdxList = []
 		senBeginWordIndex =0
-		senEndCharIndex = 0
-		#for sen in range(len(s_tokensList[data['qid2cid'][idx]])):
-		#	senEndCharIndex += len(' '.join(s_tokensList[data['qid2cid'][idx]][sen]['words']))
 		sentList=data['sentences'][data['qid2cid'][idx]]
 		for j in range(len(sentList)):
-			sent = sentList[j]
-			if(j!=0):
-				senEndCharIndex+=1
-			senEndCharIndex +=len(sent)
+			#senTokenList = tokenize(sentList[j])['words']
+#			senTokenList = [token.string.strip() for token in nlp(sentList[j])]
+			senTokenLen = len(sentList[j])
+			senEndWordIndex = senBeginWordIndex+senTokenLen
+			senIdxList.append([senBeginWordIndex, senEndWordIndex])
+			senBeginWordIndex += senTokenLen
 
-			for i in range(len(offsets)):
-				if(i!=len(offsets)-1):
-					charNextBeginIndex = offsets[i+1][0]
-					if(senEndCharIndex-1 < charNextBeginIndex):
-						senIdxList.append([senBeginWordIndex,i+1])
-						senBeginWordIndex = i+1
-						break
-				else:
-					senIdxList.append([senBeginWordIndex,i+1])
-					break
-				
-
+		time2=time.time()
+		# MAKE ANSWER SENTENCE INDEX LIST
 		ansSenIdxList = []
 		for i in range(len(ans_tokens)):
+			# answer token is given as [begin index, end index]
 			ans_begin_idx, ans_end_idx = ans_tokens[i]
-			for j in range(len(senIdxList)):
-				senBeginWordIndex, senEndIndex = senIdxList[j]
-				if(senBeginWordIndex <= ans_begin_idx and senEndIndex >= ans_end_idx):
-					ansSenIdxList.append(j)
+			ans_end_idx_bound = ans_end_idx+1
+			
+			# parameters for answer through multiple sentences
+			answerOverlapMaxLen = 0
+			newAnsIdx = (0,0)
+			newAnsIdxFlag = 0
 
-#		if(len(offsets)==senIdxList[-1][1]):
-#			print(document)
-#			print(ans_tokens)
-#			print(senIdxList)
-#			print(ansSenIdxList)
+			for j in range(len(senIdxList)):
+				senBeginWordIndex, senEndWordIndex = senIdxList[j]
+				if(senBeginWordIndex <= ans_begin_idx and senEndWordIndex >= ans_end_idx_bound):
+					ansSenIdxList.append(j)
+					break
+				# ANSWER THROUGH MULTIPLE SENTENCES
+				else:
+					answerOverlapLen = 0
+					new_begin_idx = 0
+					new_end_idx = 0
+					if((senBeginWordIndex <= ans_begin_idx and senEndWordIndex > ans_begin_idx)):
+						answerOverlapLen = senEndWordIndex-ans_begin_idx
+						new_begin_idx = ans_begin_idx
+						new_end_idx = senEndWordIndex-1
+					if((senBeginWordIndex < ans_end_idx_bound and senEndWordIndex >= ans_end_idx_bound)):
+						answerOverlapLen = ans_end_idx_bound-senBeginWordIndex
+						new_begin_idx = senBeginWordIndex
+						new_end_idx = ans_end_idx_bound-1
+					if(answerOverlapLen > 0):
+						# find max overlapping sentence
+						if(len(ansSenIdxList)==i+1 and answerOverlapMaxLen < answerOverlapLen):
+							ansSenIdxList[-1]=j
+							answerOverlapMaxLen = answerOverlapLen
+							newAnsIdx = (new_begin_idx,new_end_idx)
+							newAnsIdxFlag = 1
+						else:
+							if(len(ansSenIdxList)<i+1):
+								ansSenIdxList.append(j)
+								newAnsIdx = (new_begin_idx,new_end_idx)
+								newAnsIdxFlag = 1
+
+			# answer index changed
+			if(newAnsIdxFlag ==1 ):
+				if(ans_tokens[i][0] > newAnsIdx[0] or ans_tokens[i][1] < newAnsIdx[1]):
+					print(ans_tokens[i])
+					print(newAnsIdx)
+					print("new answer boundary out of default answer boundary")
+					exit()
+				ans_tokens[i] = newAnsIdx
+				ansOverlapCount += 1
+
+		time3=time.time()
+		# no answer sentence with answer
+		if(len(ansSenIdxList)==0 and len(ans_tokens)!=0):
+			emptySenError +=1
+
+		# sentence token len sum not match with whole context length
+		if(len(document)!=senIdxList[-1][1]):
+			tokenCountError +=1
+
+		# check ans count equals ans sen count
+		if(len(ans_tokens)!=len(ansSenIdxList)):
+			ansSenError += 1
+
+		# check answer boundary fits to sentence boundary
+		for begin_idx, end_idx in ans_tokens:
+			exitFlag = 0
+			for sen_begin_idx, sen_end_bound in senIdxList:
+				if(sen_begin_idx <= begin_idx and sen_end_bound-1 >= end_idx):
+					exitFlag = 1
+			if(exitFlag != 1):
+				print(begin_idx)
+				print(end_idx)
+				print(senIdxList)
+				print("answer boundary out of sentence boundary")
+				exit()
 
 		yield {
 			'id': data['qids'][idx],
@@ -193,6 +265,14 @@ def process_dataset(data, tokenizer, workers=None):
 			'document_sentence': senIdxList,
 			'sentence_answers': ansSenIdxList,
 		}
+	print("answer overlapping count")
+	print(ansOverlapCount)
+	print("empty_sen_count")
+	print(emptySenError)
+	print("token count error")
+	print(tokenCountError)
+	print("ans sen error")
+	print(ansSenError)
 
 
 # -----------------------------------------------------------------------------
@@ -215,7 +295,7 @@ print('Loading dataset %s' % in_file, file=sys.stderr)
 dataset = load_dataset(in_file)
 
 out_file = os.path.join(
-	args.out_dir, '%s-processed-%s.txt' % (args.split, args.tokenizer)
+	args.out_dir, 'resultDir/%s-processed-%s.txt' % (args.split, args.tokenizer)
 )
 print('Will write to file %s' % out_file, file=sys.stderr)
 with open(out_file, 'w') as f:

@@ -275,6 +275,14 @@ class DocReader(object):
 		loss_e = 0
 		loss_sent = 0
 		for score_s, score_e, score_sent, target_s, target_e, sent_idx, ans_sent_idx in zip(scores_s, scores_e, scores_sent, targets_s, targets_e, sent_idx_list, ans_sent_idx_list):
+#			print("nll loss log")
+#			print(score_s.size())
+#			print(ans_sent_idx)
+#			print(target_s)
+#			print(target_e)
+#			print(sent_idx[ans_sent_idx][0])
+#			print(sent_idx)
+
 			loss_s -= score_s[ans_sent_idx, target_s-sent_idx[ans_sent_idx][0]]
 			loss_e -= score_e[ans_sent_idx, target_e-sent_idx[ans_sent_idx][0]]
 			loss_sent -= score_sent[ans_sent_idx]
@@ -294,6 +302,7 @@ class DocReader(object):
 		self.network.train()
 		
 		# Transfer to GPU
+		#print(len(ex))
 		if self.use_cuda:
 			inputs = [e if e is None else Variable(e.cuda(non_blocking=True)) for e in ex[:-5]] + [ex[-5]] + [[idx[0] for idx in ex[-4]]]
 			target_s = Variable(ex[-3].cuda(non_blocking=True))
@@ -308,7 +317,7 @@ class DocReader(object):
 		score_s, score_e, score_sent = self.network(*inputs)
 
 		# Compute loss and accuracies
-		# loss = F.nll_loss(score_s, target_s) + F.nll_loss(score_e, target_e) 
+		#loss = F.nll_loss(score_s, target_s) + F.nll_loss(score_e, target_e) 
 		loss = self.sent_divided_nll_loss(score_s, score_e, score_sent, target_s, target_e, inputs[-2], inputs[-1])
 
 		# Clear gradients and run backward
