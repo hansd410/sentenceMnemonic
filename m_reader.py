@@ -160,12 +160,12 @@ class MnemonicReader(nn.Module):
 
 
 		# masking tensor
-		sent_score_mask = c.new()
-		sent_score_mask.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]),c.size(2))
-		sent_score_mask.fill_(0)
+		#sent_score_mask = c.new()
+		#sent_score_mask.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]),c.size(2))
+		#sent_score_mask.fill_(0)
 		for i, sent_idx in enumerate(sent_idx_list):
 			for j, (begin, end) in enumerate(sent_idx):
-				sent_score_mask[i,j,:]=1
+				#sent_score_mask[i,j,:]=1
 				#print(sent_word_emb[i, j, :end-begin, :].size())
 				#print(c[i, begin:end, :].size())
 				#print(begin, end, c.size(1))

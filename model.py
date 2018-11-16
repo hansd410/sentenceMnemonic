@@ -357,6 +357,26 @@ class DocReader(object):
 	# Prediction
 	# --------------------------------------------------------------------------
 
+	def sent_merged_score(self,scores_s, scores_e, scores_sent, sent_idx_list, ans_sent_idx_list):
+		merged_score_s = scores_s.new()
+		merged_score_s.resize_(scores_s.size(0),scores_s.size(1)*scores_s.size(2))
+		merged_score_s.fill_(0)
+
+		merged_score_e = scores_e.new()
+		merged_score_e.resize_(scores_e.size(0),scores_s.size(1)*scores_e.size(2))
+		merged_score_e.fill_(0)
+
+		for i, (score_s, score_e, score_sent, sent_idx, ans_sent_idx) in enumerate(zip(scores_s, scores_e, scores_sent, sent_idx_list, ans_sent_idx_list)):
+			score_s = score_s*score_sent.unsqueeze(1)
+			score_e = score_e*score_sent.unsqueeze(1)
+
+			for j in range(len(sent_idx)):
+				merged_score_s[i,sent_idx[j][0]:sent_idx[j][1]] = score_s[j,0:sent_idx[j][1]-sent_idx[j][0]]
+				merged_score_e[i,sent_idx[j][0]:sent_idx[j][1]] = score_e[j,0:sent_idx[j][1]-sent_idx[j][0]]
+
+		return merged_score_s,merged_score_e
+
+
 	def predict(self, ex, candidates=None, top_n=1, async_pool=None):
 		"""Forward a batch of examples only to get predictions.
 
@@ -378,16 +398,24 @@ class DocReader(object):
 		self.network.eval()
 
 		# Transfer to GPU
+#		if self.use_cuda:
+#			inputs = [e if e is None else
+#					  Variable(e.cuda(non_blocking=True), volatile=True)
+#					  for e in ex[:8]]
+#		else:
+#			inputs = [e if e is None else Variable(e, volatile=True)
+#					  for e in ex[:8]]
 		if self.use_cuda:
-			inputs = [e if e is None else
-					  Variable(e.cuda(non_blocking=True), volatile=True)
-					  for e in ex[:8]]
+			inputs = [e if e is None else Variable(e.cuda(non_blocking=True),volatile=True) for e in ex[:-5]] + [ex[-5]] + [[idx[0] for idx in ex[-4]]]
 		else:
-			inputs = [e if e is None else Variable(e, volatile=True)
-					  for e in ex[:8]]
+			inputs = [e if e is None else Variable(e,volatile=True) for e in ex[:-5]] + [ex[-5]] + [[idx[0] for idx in ex[-4]]]
 
 		# Run forward
-		score_s, score_e = self.network(*inputs)
+		# batch * senNum * featureDim
+		score_s, score_e, score_sent = self.network(*inputs)
+
+		score_s, score_e = self.sent_merged_score(score_s, score_e, score_sent, inputs[-2], inputs[-1])
+		#score_s, score_e = self.network(*inputs)
 		del inputs
 
 		# Decode predictions
