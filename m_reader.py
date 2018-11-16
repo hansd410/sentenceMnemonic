@@ -178,6 +178,9 @@ class MnemonicReader(nn.Module):
 		q_proj = self.sent_embedding((q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), -float('inf'))).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
 		sent_score = (sent_emb * q_proj).sum(dim=1)  # batch_size x max_sent_size
 
+		for i, sent_idx in enumerate(sent_idx_list):
+			if len(sent_idx) != sent_score.size(1):
+				sent_score[i, len(sent_idx):] = -1e10
 	
 		if self.training:
 			sent_score = F.log_softmax(sent_score, dim=1)
