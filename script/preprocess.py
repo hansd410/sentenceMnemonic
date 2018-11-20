@@ -98,6 +98,8 @@ def find_answer(offsets, begin_offset, end_offset):
 
 
 def process_dataset(data, tokenizer, workers=None):
+	senBoundError = open("senBoundError.txt",'w')
+	senBoundErrorDict = {}
 #	nlp = spacy.load('en')
 	"""Iterate processing (tokenize, parse, etc) dataset multithreaded."""
 	make_pool = partial(Pool, workers, initializer=init)
@@ -192,6 +194,7 @@ def process_dataset(data, tokenizer, workers=None):
 					break
 				# ANSWER THROUGH MULTIPLE SENTENCES
 				else:
+					
 					answerOverlapLen = 0
 					new_begin_idx = 0
 					new_end_idx = 0
@@ -218,6 +221,13 @@ def process_dataset(data, tokenizer, workers=None):
 
 			# answer index changed
 			if(newAnsIdxFlag ==1 ):
+				answer = ' '.join(document[ans_begin_idx:ans_end_idx_bound])
+				answerSentenceList = []
+				for senBeginWordIndex, senEndWordIndex in senIdxList:
+					if((senBeginWordIndex <= ans_begin_idx and senEndWordIndex > ans_begin_idx) or (senBeginWordIndex < ans_end_idx_bound and senEndWordIndex >= ans_end_idx_bound)):
+						answerSentenceList.append(' '.join(document[senBeginWordIndex:senEndWordIndex]))
+				senBoundErrorDict[answer] = answerSentenceList
+
 				if(ans_tokens[i][0] > newAnsIdx[0] or ans_tokens[i][1] < newAnsIdx[1]):
 					print(ans_tokens[i])
 					print(newAnsIdx)
@@ -279,7 +289,11 @@ def process_dataset(data, tokenizer, workers=None):
 	print(ansSenError)
 	print("ans be same error")
 	print(ansBESameCount)
-
+	for key, value in senBoundErrorDict.items():
+		senBoundError.write(key)
+		senBoundError.write("\n")
+		senBoundError.write(' // '.join(value))
+		senBoundError.write("\n\n")
 
 
 # -----------------------------------------------------------------------------

@@ -366,9 +366,16 @@ class DocReader(object):
 		merged_score_e.resize_(scores_e.size(0),scores_s.size(1)*scores_e.size(2))
 		merged_score_e.fill_(0)
 
+		one_score_sent = scores_sent.new()
+		one_score_sent.resize_(scores_sent.size(1))
+		one_score_sent.fill_(1)
+
 		for i, (score_s, score_e, score_sent, sent_idx, ans_sent_idx) in enumerate(zip(scores_s, scores_e, scores_sent, sent_idx_list, ans_sent_idx_list)):
-			score_s = score_s*score_sent.unsqueeze(1)
-			score_e = score_e*score_sent.unsqueeze(1)
+			score_s = score_s*one_score_sent.unsqueeze(1)
+			score_e = score_e*one_score_sent.unsqueeze(1)
+		
+			#score_s = score_s*score_sent.unsqueeze(1)
+			#score_e = score_e*score_sent.unsqueeze(1)
 
 			for j in range(len(sent_idx)):
 				merged_score_s[i,sent_idx[j][0]:sent_idx[j][1]] = score_s[j,0:sent_idx[j][1]-sent_idx[j][0]]
@@ -413,9 +420,7 @@ class DocReader(object):
 		# Run forward
 		# batch * senNum * featureDim
 		score_s, score_e, score_sent = self.network(*inputs)
-
 		score_s, score_e = self.sent_merged_score(score_s, score_e, score_sent, inputs[-2], inputs[-1])
-		#score_s, score_e = self.network(*inputs)
 		del inputs
 
 		# Decode predictions
