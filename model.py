@@ -406,9 +406,9 @@ class DocReader(object):
 #			inputs = [e if e is None else Variable(e, volatile=True)
 #					  for e in ex[:8]]
 		if self.use_cuda:
-			inputs = [e if e is None else Variable(e.cuda(non_blocking=True),volatile=True) for e in ex[:-5]] + [ex[-5]] + [[idx[0] for idx in ex[-4]]]
+			inputs = [e if e is None else Variable(e.cuda(non_blocking=True),volatile=True) for e in ex[:-5]] + [ex[-5]] + [ex[-4]]
 		else:
-			inputs = [e if e is None else Variable(e,volatile=True) for e in ex[:-5]] + [ex[-5]] + [[idx[0] for idx in ex[-4]]]
+			inputs = [e if e is None else Variable(e,volatile=True) for e in ex[:-5]] + [ex[-5]] + [ex[-4]]
 
 		# Run forward
 		# batch * senNum * featureDim
@@ -425,15 +425,15 @@ class DocReader(object):
 		if candidates:
 			args = (score_s, score_e, candidates, top_n, self.args.max_len)
 			if async_pool:
-				return async_pool.apply_async(self.decode_candidates, args)
+				return async_pool.apply_async(self.decode_candidates, args), score_sent
 			else:
-				return self.decode_candidates(*args)
+				return self.decode_candidates(*args), score_sent
 		else:
 			args = (score_s, score_e, top_n, self.args.max_len)
 			if async_pool:
-				return async_pool.apply_async(self.decode, args)
+				return async_pool.apply_async(self.decode, args), score_sent
 			else:
-				return self.decode(*args)
+				return self.decode(*args), score_sent
 
 	@staticmethod
 	def decode(score_s, score_e, top_n=1, max_len=None):

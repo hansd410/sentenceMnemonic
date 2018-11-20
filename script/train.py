@@ -258,6 +258,40 @@ def train(args, data_loader, model, global_stats):
 # Validation loops. Includes both "unofficial" and "official" functions that
 # use different metrics and implementations.
 # ------------------------------------------------------------------------------
+def getMAP(rankList):
+	mapScore = float(0)
+	for rank in rankList:
+		mapScore+= 1/(rank+1)
+	mapScore = mapScore/len(rankList)
+	return mapScore
+
+def validate_sentence(args, data_loader, model, global_stats):
+	"""Run one full unofficial validation.
+	Unofficial = doesn't use SQuAD script.
+	"""
+	# Make predictions
+	wholeCount = 0
+	rank1Count = 0
+	rankList = []
+	for ex in data_loader:
+		batch_size = ex[0].size(0)
+		(pred_s, pred_e, _), score_sent = model.predict(ex)
+		targetSenList = ex[-4]
+		sorted_score_sent,sorted_sent_indices = torch.sort(score_sent,1,True)
+		for batchIndex, senList in enumerate(targetSenList):
+			sent_rank = score_sent.size(1)
+			for senIdx in senList:
+				idx_sent_rank = (sorted_sent_indices[batchIndex]==senIdx).nonzero()
+				if(sent_rank>idx_sent_rank):
+					sent_rank = idx_sent_rank.item()
+			rankList.append(sent_rank)
+			if(sent_rank==0):
+				rank1Count += 1
+			wholeCount += 1
+
+	logger.info("sentence validation - MAP : "+str(getMAP(rankList))+"\trank1Rate : "+str( rank1Count/wholeCount)+"\trank1/whole : "+str(rank1Count)+"/"+str(wholeCount))
+
+	return rankList
 
 
 def validate_unofficial(args, data_loader, model, global_stats, mode):
@@ -273,7 +307,7 @@ def validate_unofficial(args, data_loader, model, global_stats, mode):
 	examples = 0
 	for ex in data_loader:
 		batch_size = ex[0].size(0)
-		pred_s, pred_e, _ = model.predict(ex)
+		(pred_s, pred_e, _), score_sent = model.predict(ex)
 		target_s, target_e = ex[-3:-1]
 
 		# We get metrics for independent start/end and joint start/end
@@ -314,7 +348,7 @@ def validate_official(args, data_loader, model, global_stats,
 	examples = 0
 	for ex in data_loader:
 		ex_id, batch_size = ex[-1], ex[0].size(0)
-		pred_s, pred_e, _ = model.predict(ex)
+		(pred_s, pred_e, _), score_sent = model.predict(ex)
 
 		for i in range(batch_size):
 			s_offset = offsets[ex_id[i]][pred_s[i][0]][0]
@@ -510,6 +544,19 @@ def main(args):
 	stats = {'timer': utils.Timer(), 'epoch': 0, 'best_valid': 0}
 	for epoch in range(start_epoch, args.num_epochs):
 		stats['epoch'] = epoch
+
+		if(args.pretrained != ''):
+			senRankList = validate_sentence(args, dev_loader, model, stats)
+			validate_unofficial(args, train_loader, model, stats, mode='train')
+
+			# Validate unofficial (dev)
+			result = validate_unofficial(args, dev_loader, model, stats, mode='dev')
+
+			# Validate official
+			if args.official_eval:
+				result = validate_official(args, dev_loader, model, stats,
+										   dev_offsets, dev_texts, dev_answers)
+			exit()
 
 		# Train
 		train(args, train_loader, model, stats)

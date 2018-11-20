@@ -88,9 +88,12 @@ def vectorize(ex, model, single_answer=False):
 		for i, w in enumerate(ex['question']):
 			q_features[i][feature_dict['tf']] = counter[w.lower()] * 1.0 / l
 
+	sentenceIdxList = ex['document_sentence']
+	answerSentenceIdxList = ex['sentence_answers']
+
 	# Maybe return without target
 	if 'answers' not in ex:
-		return document, document_char, c_features, question, question_char, q_features, ex['id']
+		return document, document_char, c_features, question, question_char, q_features, sentenceIdxList, answerSentenceIdxList,ex['id']
 
 	# ...or with target(s) (might still be empty if answers is empty)
 	if single_answer:
@@ -101,10 +104,8 @@ def vectorize(ex, model, single_answer=False):
 		start = [a[0] for a in ex['answers']]
 		end = [a[1] for a in ex['answers']]
 
-	sentenceIdxList = ex['document_sentence']
-	answerSentenceIdxList = ex['sentence_answers']
-	
-	return document, document_char, c_features, question, question_char, q_features, sentenceIdxList,answerSentenceIdxList, start, end, ex['id']
+	return document, document_char, c_features, question, question_char, q_features, sentenceIdxList, answerSentenceIdxList, start, end, ex['id']
+	#return document, document_char, c_features, question, question_char, q_features, start, end, ex['id']
 
 
 def batchify(batch):
