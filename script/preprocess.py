@@ -98,7 +98,7 @@ def find_answer(offsets, begin_offset, end_offset):
 
 
 def process_dataset(data, tokenizer, workers=None):
-	senBoundError = open("senBoundError.txt",'w')
+	senBoundError = open("senBoundError_"+args.split+".txt",'w')
 	senBoundErrorDict = {}
 #	nlp = spacy.load('en')
 	"""Iterate processing (tokenize, parse, etc) dataset multithreaded."""
@@ -130,6 +130,7 @@ def process_dataset(data, tokenizer, workers=None):
 	ansSenError = 0
 	ansOverlapCount = 0
 	ansBESameCount = 0
+	wholeAnswerCount = 0
 
 	emptySenCaseList = []
 	for idx in range(len(data['qids'])):
@@ -163,14 +164,23 @@ def process_dataset(data, tokenizer, workers=None):
 		# MAKE SENTENCE INDEX LIST [word begin index, word end index + 1]
 		senIdxList = []
 		senBeginWordIndex =0
+		senWordLen = 0
 		sentList=data['sentences'][data['qid2cid'][idx]]
 		for j in range(len(sentList)):
-			#senTokenList = tokenize(sentList[j])['words']
-#			senTokenList = [token.string.strip() for token in nlp(sentList[j])]
+			# sentence tokenize rules
 			senTokenLen = len(sentList[j])
-			senEndWordIndex = senBeginWordIndex+senTokenLen
+			senWordLen += senTokenLen
+			
+			# sent bound rules
+			if(j!=len(sentList)-1 and str(sentList[j][-1])!= "." and str(sentList[j][-1])!= "?" and str(sentList[j][-1])!= "!" ):
+				continue
+				if(len(sentList[j])>=2 and (str(sentList[j][-1])!= "\"" and str(sentList[j][-2])!= ".")):
+					continue
+
+			senEndWordIndex = senBeginWordIndex+senWordLen
 			senIdxList.append([senBeginWordIndex, senEndWordIndex])
-			senBeginWordIndex += senTokenLen
+			senBeginWordIndex = senEndWordIndex
+			senWordLen =0
 
 		time2=time.time()
 		# MAKE ANSWER SENTENCE INDEX LIST
@@ -221,6 +231,8 @@ def process_dataset(data, tokenizer, workers=None):
 
 			# answer index changed
 			if(newAnsIdxFlag ==1 ):
+					
+				# sent bound error dict
 				answer = ' '.join(document[ans_begin_idx:ans_end_idx_bound])
 				answerSentenceList = []
 				for senBeginWordIndex, senEndWordIndex in senIdxList:
@@ -235,6 +247,8 @@ def process_dataset(data, tokenizer, workers=None):
 					exit()
 				ans_tokens[i] = newAnsIdx
 				ansOverlapCount += 1
+
+			wholeAnswerCount += 1
 
 		time3=time.time()
 		# no answer sentence with answer
@@ -279,6 +293,8 @@ def process_dataset(data, tokenizer, workers=None):
 			'document_sentence': senIdxList,
 			'sentence_answers': ansSenIdxList,
 		}
+	print("whole answer count")
+	print(wholeAnswerCount)
 	print("answer overlapping count")
 	print(ansOverlapCount)
 	print("empty_sen_count")
@@ -289,6 +305,9 @@ def process_dataset(data, tokenizer, workers=None):
 	print(ansSenError)
 	print("ans be same error")
 	print(ansBESameCount)
+
+	senBoundError.write("num of cases:"+str(len(senBoundErrorDict)))
+	senBoundError.write("\n")
 	for key, value in senBoundErrorDict.items():
 		senBoundError.write(key)
 		senBoundError.write("\n")

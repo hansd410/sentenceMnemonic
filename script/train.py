@@ -19,7 +19,6 @@ import os
 import subprocess
 import logging
 
-
 import utils, vector, config, data
 from model import DocReader
 
@@ -371,6 +370,110 @@ def validate_official(args, data_loader, model, global_stats,
 
 	return {'exact_match': exact_match.avg * 100, 'f1': f1.avg * 100}
 
+def validate_official_with_sentence(args, data_loader, model, global_stats,
+					  offsets, texts, answers):
+	"""Run one full official validation. Uses exact spans and same
+	exact match/F1 score computation as in the SQuAD script.
+
+	Extra arguments:
+		offsets: The character start/end indices for the tokens in each context.
+		texts: Map of qid --> raw text of examples context (matches offsets).
+		answers: Map of qid --> list of accepted answers.
+	"""
+
+	wrongSenRight=open('wrongSenRight.txt','w')
+	rightSenWrong=open('rightSenWrong.txt','w')
+	# Make predictions
+	eval_time = utils.Timer()
+	f1 = utils.AverageMeter()
+	exact_match = utils.AverageMeter()
+
+	# Run through examples
+	wholeCount = 0
+	rank1Count = 0
+	rightSenWrongCount =0 
+	rightSenRightCount =0 
+	wrongSenRightCount =0
+	wrongSenWrongCount =0
+	rankList = []
+
+	examples = 0
+	for ex in data_loader:
+		ex_id, batch_size = ex[-1], ex[0].size(0)
+		(pred_s, pred_e, _), score_sent = model.predict(ex)
+
+		senIdxList = ex[-5]
+		targetSenList = ex[-4]
+		sorted_score_sent,sorted_sent_indices = torch.sort(score_sent,1,True)
+
+		for i in range(batch_size):
+			s_offset = offsets[ex_id[i]][pred_s[i][0]][0]
+			e_offset = offsets[ex_id[i]][pred_e[i][0]][1]
+			predictSenIdx = 100
+			for senIdx,[senBeginIdx,senEndIdx] in enumerate(senIdxList[i]):
+				senOffsetBeginIdx = offsets[ex_id[i]][senBeginIdx][0]
+				senOffsetEndIdx = offsets[ex_id[i]][senEndIdx-1][1]
+				if(s_offset>=senOffsetBeginIdx and s_offset<senOffsetEndIdx):
+					predictSenIdx = senIdx
+				
+			prediction = texts[ex_id[i]][s_offset:e_offset]
+
+			# Compute metrics
+			ground_truths = answers[ex_id[i]]
+			em_result = utils.metric_max_over_ground_truths(
+				utils.exact_match_score, prediction, ground_truths)
+			f1_result = utils.metric_max_over_ground_truths(
+				utils.f1_score, prediction, ground_truths)
+			exact_match.update(em_result)
+			f1.update(f1_result)
+
+			sent_rank = score_sent.size(1)
+			sent_idx = -1
+			for senIdx in targetSenList[i]:
+				idx_sent_rank = (sorted_sent_indices[i]==senIdx).nonzero()
+				if(sent_rank>idx_sent_rank):
+					sent_rank = idx_sent_rank.item()
+					sent_idx = senIdx 
+			rankList.append(sent_rank)
+
+			#context = texts[ex_id[i]]
+			#nlp_context = nlp(context)
+			#sentenceList = [sent for sent in nlp_context.sents]
+
+			if(sent_rank==0):
+				rank1Count += 1
+				if(f1_result<0.5):
+					rightSenWrongCount += 1
+					rightSenWrong.write(' // '.join(ground_truths))
+					rightSenWrong.write("\n")
+					rightSenWrong.write(prediction)
+					rightSenWrong.write("\n")
+					s_offset = offsets[ex_id[i]][senIdxList[i][sorted_sent_indices[i][0]][0]][0]
+					e_offset = offsets[ex_id[i]][senIdxList[i][sorted_sent_indices[i][0]][1]-1][1]
+
+					rightSenWrong.write(texts[ex_id[i]][s_offset:e_offset])
+					rightSenWrong.write("\n\n")
+				else:
+					rightSenRightCount += 1
+			else:
+				if(f1_result>=0.5):
+					wrongSenRightCount += 1
+					#wrongSenRight.write( )
+				else:
+					wrongSenWrongCount += 1
+			wholeCount += 1
+		examples += batch_size
+
+	logger.info("sentence validation - MAP : "+str(getMAP(rankList))+"\trank1Rate : "+str( rank1Count/wholeCount)+"\trank1/whole : "+str(rank1Count)+"/"+str(wholeCount))
+	logger.info("rightSenWrong :  "+str(rightSenWrongCount)+"\twrongSenRight "+str(wrongSenRightCount )+"\trightSenRight "+str(rightSenRightCount )+"\twrongSenWrong "+str(wrongSenWrongCount ))
+
+	logger.info('dev valid official: Epoch = %d | EM = %.2f | ' %
+				(global_stats['epoch'], exact_match.avg * 100) +
+				'F1 = %.2f | examples = %d | valid time = %.2f (s)' %
+				(f1.avg * 100, examples, eval_time.time()))
+
+	return {'exact_match': exact_match.avg * 100, 'f1': f1.avg * 100}
+
 
 def eval_accuracies(pred_s, target_s, pred_e, target_e):
 	"""An unofficial evalutation helper.
@@ -546,6 +649,14 @@ def main(args):
 		stats['epoch'] = epoch
 
 		if(args.pretrained != ''):
+			if args.official_eval:
+				#result = validate_official(args, dev_loader, model, stats,
+				#						   dev_offsets, dev_texts, dev_answers)
+				validate_official_with_sentence(args, dev_loader, model, stats,
+										   dev_offsets, dev_texts, dev_answers)
+
+			exit()
+
 			senRankList = validate_sentence(args, dev_loader, model, stats)
 			validate_unofficial(args, train_loader, model, stats, mode='train')
 
@@ -553,10 +664,6 @@ def main(args):
 			result = validate_unofficial(args, dev_loader, model, stats, mode='dev')
 
 			# Validate official
-			if args.official_eval:
-				result = validate_official(args, dev_loader, model, stats,
-										   dev_offsets, dev_texts, dev_answers)
-			exit()
 
 		# Train
 		train(args, train_loader, model, stats)
