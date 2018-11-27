@@ -5,3 +5,4 @@ data/
 *.tar.gz
 *.egg-info
 trainLog/
+logFile/

@@ -371,7 +371,7 @@ def validate_official(args, data_loader, model, global_stats,
 	return {'exact_match': exact_match.avg * 100, 'f1': f1.avg * 100}
 
 def validate_official_with_sentence(args, data_loader, model, global_stats,
-					  offsets, texts, answers):
+					  offsets, texts, answers, queries):
 	"""Run one full official validation. Uses exact spans and same
 	exact match/F1 score computation as in the SQuAD script.
 
@@ -381,8 +381,10 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 		answers: Map of qid --> list of accepted answers.
 	"""
 
-	wrongSenRight=open('wrongSenRight.txt','w')
 	rightSenWrong=open('rightSenWrong.txt','w')
+	wrongSenRight=open('wrongSenRight.txt','w')
+	wrongSenWrong=open('wrongSenWrong.txt','w')
+
 	# Make predictions
 	eval_time = utils.Timer()
 	f1 = utils.AverageMeter()
@@ -419,6 +421,7 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 			prediction = texts[ex_id[i]][s_offset:e_offset]
 
 			# Compute metrics
+			query = queries[ex_id[i]]
 			ground_truths = answers[ex_id[i]]
 			em_result = utils.metric_max_over_ground_truths(
 				utils.exact_match_score, prediction, ground_truths)
@@ -458,9 +461,49 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 			else:
 				if(f1_result>=0.5):
 					wrongSenRightCount += 1
+					wrongSenRight.write(query)
+					wrongSenRight.write("\n")
+
+					wrongSenRight.write(' // '.join(ground_truths))
+					wrongSenRight.write("\n")
+					s_offset = offsets[ex_id[i]][senIdxList[i][targetSenList[i][0]][0]][0]
+					e_offset = offsets[ex_id[i]][senIdxList[i][targetSenList[i][0]][1]-1][1]
+
+					rightSenWrong.write(texts[ex_id[i]][s_offset:e_offset])
+					rightSenWrong.write("\n")
+
+					wrongSenRight.write(prediction)
+					wrongSenRight.write("\n")
+
+					s_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][0]][0]
+					e_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][1]-1][1]
+
+					wrongSenRight.write(texts[ex_id[i]][s_offset:e_offset])
+					wrongSenRight.write("\n\n")
+
 					#wrongSenRight.write( )
 				else:
 					wrongSenWrongCount += 1
+					wrongSenWrong.write(query)
+					wrongSenWrong.write("\n")
+
+					wrongSenWrong.write(' // '.join(ground_truths))
+					wrongSenWrong.write("\n")
+					s_offset = offsets[ex_id[i]][senIdxList[i][targetSenList[i][0]][0]][0]
+					e_offset = offsets[ex_id[i]][senIdxList[i][targetSenList[i][0]][1]-1][1]
+
+					wrongSenWrong.write(texts[ex_id[i]][s_offset:e_offset])
+					wrongSenWrong.write("\n")
+
+					wrongSenWrong.write(prediction)
+					wrongSenWrong.write("\n")
+
+					s_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][0]][0]
+					e_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][1]-1][1]
+
+					wrongSenWrong.write(texts[ex_id[i]][s_offset:e_offset])
+					wrongSenWrong.write("\n\n")
+
 			wholeCount += 1
 		examples += batch_size
 
@@ -534,6 +577,7 @@ def main(args):
 		dev_texts = utils.load_text(args.dev_json)
 		dev_offsets = {ex['id']: ex['offsets'] for ex in dev_exs}
 		dev_answers = utils.load_answers(args.dev_json)
+		dev_query = utils.load_query(args.dev_json)
 
 	# --------------------------------------------------------------------------
 	# MODEL
@@ -653,7 +697,7 @@ def main(args):
 				#result = validate_official(args, dev_loader, model, stats,
 				#						   dev_offsets, dev_texts, dev_answers)
 				validate_official_with_sentence(args, dev_loader, model, stats,
-										   dev_offsets, dev_texts, dev_answers)
+										   dev_offsets, dev_texts, dev_answers, dev_query)
 
 			exit()
 

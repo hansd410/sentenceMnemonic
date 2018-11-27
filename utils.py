@@ -67,6 +67,19 @@ def load_text(filename):
 				texts[qa['id']] = paragraph['context']
 	return texts
 
+def load_query(filename):
+	"""Load the paragraphs only of a SQuAD dataset. Store as qid -> text."""
+	# Load JSON file
+	with open(filename) as f:
+		examples = json.load(f)['data']
+
+	query = {}
+	for article in examples:
+		for paragraph in article['paragraphs']:
+			for qa in paragraph['qas']:
+				query[qa['id']] = qa['question']
+	return query
+
 
 def load_answers(filename):
 	"""Load the answers only of a SQuAD dataset. Store as qid -> [answers]."""
