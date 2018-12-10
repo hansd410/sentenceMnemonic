@@ -286,8 +286,8 @@ class DocReader(object):
 			loss_s -= score_s[ans_sent_idx, target_s-sent_idx[ans_sent_idx][0]]
 			loss_e -= score_e[ans_sent_idx, target_e-sent_idx[ans_sent_idx][0]]
 			loss_sent -= score_sent[ans_sent_idx]
-
-		return loss_s + loss_e + loss_sent
+		return loss_sent
+#		return loss_s + loss_e + loss_sent
 
 	# --------------------------------------------------------------------------
 	# Learning

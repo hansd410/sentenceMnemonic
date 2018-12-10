@@ -276,7 +276,7 @@ def validate_sentence(args, data_loader, model, global_stats):
 		batch_size = ex[0].size(0)
 		(pred_s, pred_e, _), score_sent = model.predict(ex)
 		targetSenList = ex[-4]
-		sorted_score_sent,sorted_sent_indices = torch.sort(score_sent,1,True)
+		sorted_sent_score,sorted_sent_indices = torch.sort(score_sent,1,True)
 		for batchIndex, senList in enumerate(targetSenList):
 			sent_rank = score_sent.size(1)
 			for senIdx in senList:
@@ -381,9 +381,11 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 		answers: Map of qid --> list of accepted answers.
 	"""
 
-	rightSenWrong=open('rightSenWrong.txt','w')
-	wrongSenRight=open('wrongSenRight.txt','w')
-	wrongSenWrong=open('wrongSenWrong.txt','w')
+	rightSenWrong=open('logFile/rightSenWrong.txt','w')
+	wrongSenRight=open('logFile/wrongSenRight.txt','w')
+	wrongSenWrong=open('logFile/wrongSenWrong.txt','w')
+	rightSenWrongSenLen=open('logFile/rightSenWrong_SenLen.txt','w')
+
 
 	# Make predictions
 	eval_time = utils.Timer()
@@ -393,10 +395,28 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 	# Run through examples
 	wholeCount = 0
 	rank1Count = 0
+	rightSenWrongDiffSenCount =0
 	rightSenWrongCount =0 
+	rightSenWrongBeginCount =0 
+	rightSenWrongEndCount =0 
 	rightSenRightCount =0 
+	rightSenRightBeginCount =0 
+	rightSenRightEndCount =0 
 	wrongSenRightCount =0
+	wrongSenRightBeginCount =0 
+	wrongSenRightEndCount =0 
 	wrongSenWrongCount =0
+	wrongSenWrongBeginCount =0 
+	wrongSenWrongEndCount =0 
+
+	ansSenLenDict = {}
+	predSenLenDict = {}
+	ansPredSenLenDiffDict = {}
+	for i in range(300):
+		ansPredSenLenDiffDict[i-150]=0
+		ansSenLenDict[i]=0
+		predSenLenDict[i]=0
+
 	rankList = []
 
 	examples = 0
@@ -406,17 +426,27 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 
 		senIdxList = ex[-5]
 		targetSenList = ex[-4]
-		sorted_score_sent,sorted_sent_indices = torch.sort(score_sent,1,True)
+		target_s, target_e = ex[-3:-1]
+		sorted_sent_score,sorted_sent_indices = torch.sort(score_sent,1,True)
 
 		for i in range(batch_size):
-			s_offset = offsets[ex_id[i]][pred_s[i][0]][0]
-			e_offset = offsets[ex_id[i]][pred_e[i][0]][1]
-			predictSenIdx = 100
+			target_s_idxs=target_s[i]
+			target_e_idxs=target_e[i]
+
+			pred_s_idx = pred_s[i][0]
+			pred_e_idx = pred_e[i][0]
+
+			s_offset = offsets[ex_id[i]][pred_s_idx][0]
+			e_offset = offsets[ex_id[i]][pred_e_idx][1]
+
+			predSenIdx = 100
 			for senIdx,[senBeginIdx,senEndIdx] in enumerate(senIdxList[i]):
-				senOffsetBeginIdx = offsets[ex_id[i]][senBeginIdx][0]
-				senOffsetEndIdx = offsets[ex_id[i]][senEndIdx-1][1]
-				if(s_offset>=senOffsetBeginIdx and s_offset<senOffsetEndIdx):
-					predictSenIdx = senIdx
+				#senOffsetBeginOffset = offsets[ex_id[i]][senBeginIdx][0]
+				#senOffsetEndOffset = offsets[ex_id[i]][senEndIdx-1][1]
+				#if(s_offset>=senOffsetBeginOffset and s_offset<senOffsetEndOffset):
+				#	targetSenIdx = senIdx
+				if(pred_s_idx>=senBeginIdx and pred_s_idx<=senEndIdx-1):
+					predSenIdx = senIdx
 				
 			prediction = texts[ex_id[i]][s_offset:e_offset]
 
@@ -431,12 +461,10 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 			f1.update(f1_result)
 
 			sent_rank = score_sent.size(1)
-			sent_idx = -1
 			for senIdx in targetSenList[i]:
 				idx_sent_rank = (sorted_sent_indices[i]==senIdx).nonzero()
 				if(sent_rank>idx_sent_rank):
 					sent_rank = idx_sent_rank.item()
-					sent_idx = senIdx 
 			rankList.append(sent_rank)
 
 			#context = texts[ex_id[i]]
@@ -445,7 +473,8 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 
 			if(sent_rank==0):
 				rank1Count += 1
-				if(f1_result<0.5):
+				# right sent wrong
+				if(em_result==0):
 					rightSenWrongCount += 1
 					rightSenWrong.write(' // '.join(ground_truths))
 					rightSenWrong.write("\n")
@@ -453,35 +482,87 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 					rightSenWrong.write("\n")
 					s_offset = offsets[ex_id[i]][senIdxList[i][sorted_sent_indices[i][0]][0]][0]
 					e_offset = offsets[ex_id[i]][senIdxList[i][sorted_sent_indices[i][0]][1]-1][1]
-
 					rightSenWrong.write(texts[ex_id[i]][s_offset:e_offset])
 					rightSenWrong.write("\n\n")
+
+					if(pred_s_idx in target_s_idxs):
+						rightSenWrongBeginCount += 1
+					if(pred_e_idx in target_e_idxs):
+						rightSenWrongEndCount += 1
+					if(sorted_sent_indices[i][0]!=predSenIdx):
+						rightSenWrongDiffSenCount+=1
+
+					# sentence length count
+					# answer sentence len
+					targetSenLen = (senIdxList[i][sorted_sent_indices[i][0]][1]-senIdxList[i][sorted_sent_indices[i][0]][0])
+					if (targetSenLen not in ansSenLenDict.keys()):
+						ansSenLenDict[targetSenLen]=0
+					else:
+						ansSenLenDict[targetSenLen]+=1
+					# predict sentence len
+					predSenLen = (senIdxList[i][predSenIdx][1]-senIdxList[i][predSenIdx][0])
+					if (predSenLen not in predSenLenDict.keys()):
+						predSenLenDict[predSenLen]=0
+					else:
+						predSenLenDict[predSenLen]+=1
+
+					ansPredSenLenDiff = targetSenLen-predSenLen
+					if (predSenLen not in predSenLenDict.keys()):
+						ansPredSenLenDiffDict[ansPredSenLenDiff]=0
+					else:
+						ansPredSenLenDiffDict[ansPredSenLenDiff]+=1
+
+				# right sent right
 				else:
 					rightSenRightCount += 1
+					if(pred_s_idx in target_s_idxs):
+						rightSenRightBeginCount += 1
+					if(pred_e_idx in target_e_idxs):
+						rightSenRightEndCount += 1
+
 			else:
-				if(f1_result>=0.5):
+				# wrong sent right
+				if(em_result==1):
 					wrongSenRightCount += 1
+
 					wrongSenRight.write(query)
 					wrongSenRight.write("\n")
 
+					# print target answer
 					wrongSenRight.write(' // '.join(ground_truths))
 					wrongSenRight.write("\n")
+
+					# print target sentence
 					s_offset = offsets[ex_id[i]][senIdxList[i][targetSenList[i][0]][0]][0]
 					e_offset = offsets[ex_id[i]][senIdxList[i][targetSenList[i][0]][1]-1][1]
+					wrongSenRight.write("target sentence idx: ")
+					wrongSenRight.write(str(targetSenList[i][0]))
+					wrongSenRight.write("\n")
+					wrongSenRight.write("target sentence: ")
+					wrongSenRight.write(texts[ex_id[i]][s_offset:e_offset])
+					wrongSenRight.write("\n")
 
-					rightSenWrong.write(texts[ex_id[i]][s_offset:e_offset])
-					rightSenWrong.write("\n")
-
+					# print predicted answer
+					wrongSenRight.write("prediction: ")
 					wrongSenRight.write(prediction)
 					wrongSenRight.write("\n")
 
-					s_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][0]][0]
-					e_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][1]-1][1]
-
+					# print predicted sentence
+					s_offset = offsets[ex_id[i]][senIdxList[i][predSenIdx][0]][0]
+					e_offset = offsets[ex_id[i]][senIdxList[i][predSenIdx][1]-1][1]
+					wrongSenRight.write("predict sentence idx: ")
+					wrongSenRight.write(str(predSenIdx))
+					wrongSenRight.write("\n")
+					wrongSenRight.write("predict sentence: ")
 					wrongSenRight.write(texts[ex_id[i]][s_offset:e_offset])
 					wrongSenRight.write("\n\n")
 
-					#wrongSenRight.write( )
+					if(pred_s_idx in target_s_idxs):
+						wrongSenRightBeginCount += 1
+					if(pred_e_idx in target_e_idxs):
+						wrongSenRightEndCount += 1
+
+				# wrong sent wrong
 				else:
 					wrongSenWrongCount += 1
 					wrongSenWrong.write(query)
@@ -498,17 +579,45 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 					wrongSenWrong.write(prediction)
 					wrongSenWrong.write("\n")
 
-					s_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][0]][0]
-					e_offset = offsets[ex_id[i]][senIdxList[i][predictSenIdx][1]-1][1]
+					s_offset = offsets[ex_id[i]][senIdxList[i][predSenIdx][0]][0]
+					e_offset = offsets[ex_id[i]][senIdxList[i][predSenIdx][1]-1][1]
 
 					wrongSenWrong.write(texts[ex_id[i]][s_offset:e_offset])
 					wrongSenWrong.write("\n\n")
 
+					if(pred_s_idx in target_s_idxs):
+						wrongSenWrongBeginCount += 1
+					if(pred_e_idx in target_e_idxs):
+						wrongSenWrongEndCount += 1
+
 			wholeCount += 1
 		examples += batch_size
-
 	logger.info("sentence validation - MAP : "+str(getMAP(rankList))+"\trank1Rate : "+str( rank1Count/wholeCount)+"\trank1/whole : "+str(rank1Count)+"/"+str(wholeCount))
-	logger.info("rightSenWrong :  "+str(rightSenWrongCount)+"\twrongSenRight "+str(wrongSenRightCount )+"\trightSenRight "+str(rightSenRightCount )+"\twrongSenWrong "+str(wrongSenWrongCount ))
+	logger.info("rightSenWrong / begin / end : "+str(rightSenWrongCount)+" / "+str(rightSenWrongBeginCount)+" / "+str(rightSenWrongEndCount)+"\twrongSenRight / begin / end : "+str(wrongSenRightCount )+" / "+str(wrongSenRightBeginCount)+" / "+str(wrongSenRightEndCount)+"\trightSenRight / begin / end : "+str(rightSenRightCount )+" / "+str(rightSenRightBeginCount)+" / "+str(rightSenRightEndCount)+"\twrongSenWrong / begin / end : "+str(wrongSenWrongCount )+" / "+str(wrongSenWrongBeginCount)+" / "+str(wrongSenWrongEndCount))
+
+	rightSenWrongSenLen.write("rightSenWrongDiff sen count")
+	rightSenWrongSenLen.write("\n")
+	rightSenWrongSenLen.write(str(rightSenWrongDiffSenCount))
+	rightSenWrongSenLen.write("\n\n")
+	rightSenWrongSenLen.write("ans sen len\n")
+	for key,value in sorted(ansSenLenDict.items()):
+		rightSenWrongSenLen.write(str(key))
+		rightSenWrongSenLen.write("\t")
+		rightSenWrongSenLen.write(str(value))
+		rightSenWrongSenLen.write("\n")
+	rightSenWrongSenLen.write("\npred sen len\n")
+	for key,value in sorted(predSenLenDict.items()):
+		rightSenWrongSenLen.write(str(key))
+		rightSenWrongSenLen.write("\t")
+		rightSenWrongSenLen.write(str(value))
+		rightSenWrongSenLen.write("\n")
+	rightSenWrongSenLen.write("\nans pred sen len diff\n")
+	for key,value in sorted(ansPredSenLenDiffDict.items()):
+		rightSenWrongSenLen.write(str(key))
+		rightSenWrongSenLen.write("\t")
+		rightSenWrongSenLen.write(str(value))
+		rightSenWrongSenLen.write("\n")
+
 
 	logger.info('dev valid official: Epoch = %d | EM = %.2f | ' %
 				(global_stats['epoch'], exact_match.avg * 100) +
@@ -576,6 +685,8 @@ def main(args):
 	if args.official_eval:
 		dev_texts = utils.load_text(args.dev_json)
 		dev_offsets = {ex['id']: ex['offsets'] for ex in dev_exs}
+		dev_exs_answers = {ex['id']: ex['answers'] for ex in dev_exs}
+
 		dev_answers = utils.load_answers(args.dev_json)
 		dev_query = utils.load_query(args.dev_json)
 
@@ -698,16 +809,11 @@ def main(args):
 				#						   dev_offsets, dev_texts, dev_answers)
 				validate_official_with_sentence(args, dev_loader, model, stats,
 										   dev_offsets, dev_texts, dev_answers, dev_query)
-
 			exit()
 
 			senRankList = validate_sentence(args, dev_loader, model, stats)
 			validate_unofficial(args, train_loader, model, stats, mode='train')
-
-			# Validate unofficial (dev)
 			result = validate_unofficial(args, dev_loader, model, stats, mode='dev')
-
-			# Validate official
 
 		# Train
 		train(args, train_loader, model, stats)

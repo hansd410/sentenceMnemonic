@@ -116,7 +116,7 @@ def process_dataset(data, tokenizer, workers=None):
 	ansBESameCount = 0
 	wholeAnswerCount = 0
 	sentCountDict = {}
-	sentCount = open(args.logDir+"/sentCount_"+args.split+".txt",'w')
+	sentCount = open(args.log_dir+"/sentCount_"+args.split+"_rules"+str(args.sentSplitRules)+".txt",'w')
 	parenErrorCount = 0
 	quoErrorCount = 0
 
@@ -124,7 +124,7 @@ def process_dataset(data, tokenizer, workers=None):
 	tokenCountError = 0 
 	ansSenError = 0
 	sentBoundErrorDict = {}
-	sentBoundError = open(args.logDir+"/sentBoundError_"+args.split+".txt",'w')
+	sentBoundError = open(args.log_dir+"/sentBoundError_"+args.split+"_rules"+str(args.sentSplitRules)+".txt",'w')
 
 	# process
 	for idx in range(len(data['qids'])):
@@ -168,7 +168,7 @@ def process_dataset(data, tokenizer, workers=None):
 			
 			# sent bound rules
 			# rule 1. do not split without . ? !
-			if(args.senSplitRules>0):
+			if(args.sentSplitRules>0):
 				if(j<len(sentList)-1 and
 					str(sentList[j][-1])!= "." and str(sentList[j][-1])!= "?" and str(sentList[j][-1])!= "!" ):
 					continueFlag=1
@@ -176,13 +176,13 @@ def process_dataset(data, tokenizer, workers=None):
 						str(sentList[j][-2])!= "." and (str(sentList[j][-1])!= '"' )):
 						continueFlag=1
 			# rule 2. do not split . and "
-			if(args.senSplitRules>1):
+			if(args.sentSplitRules>1):
 				if(j<len(sentList)-1 and
 					(str(sentList[j][-1])== "." or str(sentList[j][-1])== "?" or str(sentList[j][-1])== "!") and
 					str(sentList[j+1][0])=='"'):
 					continueFlag=1
 			# rule 3. if answer start with . , move one word
-			if(args.senSplitRules>2):
+			if(args.sentSplitRules>2):
 				remove_idx_list = []
 				for i in range(len(ans_idx_tokens)):
 					ans_begin_idx, ans_end_idx = ans_idx_tokens[i]
@@ -197,7 +197,7 @@ def process_dataset(data, tokenizer, workers=None):
 					ans_idx_tokens.remove(ans_idx_tokens[remove_idx_list[i]])
 
 			# rule 4. do not split Mr.
-			if(args.senSplitRules>3):
+			if(args.sentSplitRules>3):
 				filterList = ["Mr","Mrs","Ms","etc","Op","St","Rs","Sch","PT","Ss","Msgr","al","Estep","ca","a.k.a","Fr","PA","Ft"]
 				if(j<len(sentList)-1 and
 					str(sentList[j][-1])== "." and
@@ -205,7 +205,7 @@ def process_dataset(data, tokenizer, workers=None):
 					continueFlag=1
 
 			# rule 5. do not split paren
-			if(args.senSplitRules>4):
+			if(args.sentSplitRules>4):
 				for wordIdx, word in enumerate(sentList[j]):
 					if("(" in str(word) or "[" in str(word) or "<" in str(word)):
 						parenFlag += str(word).count("(")
@@ -248,8 +248,8 @@ def process_dataset(data, tokenizer, workers=None):
 			sentCountDict[len(sentIdxList)]=0
 
 		# make answer sentence index list
-		wholeAnswerCount += len(ans_idx_tokens)
 		ansSenIdxList = []
+		remove_ans_idx_tokens = []
 		for i in range(len(ans_idx_tokens)):
 			# answer token is given as [begin index, end index]
 			ans_begin_idx, ans_end_idx = ans_idx_tokens[i]
@@ -259,7 +259,6 @@ def process_dataset(data, tokenizer, workers=None):
 			answerOverlapMaxLen = 0
 			newAnsIdx = (0,0)
 			newAnsIdxFlag = 0
-
 			for j in range(len(sentIdxList)):
 				sentBeginWordIndex, sentEndWordIndex = sentIdxList[j]
 				if(sentBeginWordIndex==sentEndWordIndex):
@@ -267,42 +266,52 @@ def process_dataset(data, tokenizer, workers=None):
 				if(sentBeginWordIndex <= ans_begin_idx and sentEndWordIndex >= ans_end_idx_bound):
 					ansSenIdxList.append(j)
 					break
-				# answer through multiple sentences
 				else:
-					answerOverlapLen = 0
-					new_begin_idx = 0
-					new_end_idx = 0
-					if((sentBeginWordIndex <= ans_begin_idx and sentEndWordIndex > ans_begin_idx)):
-						answerOverlapLen = sentEndWordIndex-ans_begin_idx
-						new_begin_idx = ans_begin_idx
-						new_end_idx = sentEndWordIndex-1
-					if((sentBeginWordIndex < ans_end_idx_bound and sentEndWordIndex >= ans_end_idx_bound)):
-						answerOverlapLen = ans_end_idx_bound-sentBeginWordIndex
-						new_begin_idx = sentBeginWordIndex
-						new_end_idx = ans_end_idx_bound-1
-					if(answerOverlapLen > 0):
-						# find max overlapping sentence
-						if(len(ansSenIdxList)==i+1 and answerOverlapMaxLen < answerOverlapLen):
-							ansSenIdxList[-1]=j
-							answerOverlapMaxLen = answerOverlapLen
-							newAnsIdx = (new_begin_idx,new_end_idx)
-							newAnsIdxFlag = 1
-						else:
-							if(len(ansSenIdxList)<i+1):
-								ansSenIdxList.append(j)
-								newAnsIdx = (new_begin_idx,new_end_idx)
-								newAnsIdxFlag = 1
 
-			# change answer index
-			if(newAnsIdxFlag ==1 ):
-				ansOverlapCount += 1
-				answer = ' '.join(document[ans_begin_idx:ans_end_idx_bound])
-				answerSentenceList = []
-				for sentBeginWordIndex, sentEndWordIndex in sentIdxList:
-					if((sentBeginWordIndex <= ans_begin_idx and sentEndWordIndex > ans_begin_idx) or (sentBeginWordIndex < ans_end_idx_bound and sentEndWordIndex >= ans_end_idx_bound)):
-						answerSentenceList.append(' '.join(document[sentBeginWordIndex:sentEndWordIndex]))
-				sentBoundErrorDict[answer] = (answerSentenceList, question)
-				ans_idx_tokens[i] = newAnsIdx
+					# if answer through multiple sentences, ignore it
+					if(j == len(sentIdxList)-1):
+						remove_ans_idx_tokens.append(ans_idx_tokens[i])
+			if(i==len(ans_idx_tokens)-1):
+				for j in range(len(remove_ans_idx_tokens)):
+					ans_idx_tokens.remove(remove_ans_idx_tokens[j])
+				wholeAnswerCount += len(ans_idx_tokens)
+
+				# answer through multiple sentences
+
+#					answerOverlapLen = 0
+#					new_begin_idx = 0
+#					new_end_idx = 0
+#					if((sentBeginWordIndex <= ans_begin_idx and sentEndWordIndex > ans_begin_idx)):
+#						answerOverlapLen = sentEndWordIndex-ans_begin_idx
+#						new_begin_idx = ans_begin_idx
+#						new_end_idx = sentEndWordIndex-1
+#					if((sentBeginWordIndex < ans_end_idx_bound and sentEndWordIndex >= ans_end_idx_bound)):
+#						answerOverlapLen = ans_end_idx_bound-sentBeginWordIndex
+#						new_begin_idx = sentBeginWordIndex
+#						new_end_idx = ans_end_idx_bound-1
+#					if(answerOverlapLen > 0):
+#						# find max overlapping sentence
+#						if(len(ansSenIdxList)==i+1 and answerOverlapMaxLen < answerOverlapLen):
+#							ansSenIdxList[-1]=j
+#							answerOverlapMaxLen = answerOverlapLen
+#							newAnsIdx = (new_begin_idx,new_end_idx)
+#							newAnsIdxFlag = 1
+#						else:
+#							if(len(ansSenIdxList)<i+1):
+#								ansSenIdxList.append(j)
+#								newAnsIdx = (new_begin_idx,new_end_idx)
+#								newAnsIdxFlag = 1
+#
+#			# if overlapping happens, change answer index
+#			if(newAnsIdxFlag ==1 ):
+#				ansOverlapCount += 1
+#				answer = ' '.join(document[ans_begin_idx:ans_end_idx_bound])
+#				answerSentenceList = []
+#				for sentBeginWordIndex, sentEndWordIndex in sentIdxList:
+#					if((sentBeginWordIndex <= ans_begin_idx and sentEndWordIndex > ans_begin_idx) or (sentBeginWordIndex < ans_end_idx_bound and sentEndWordIndex >= ans_end_idx_bound)):
+#						answerSentenceList.append(' '.join(document[sentBeginWordIndex:sentEndWordIndex]))
+#				sentBoundErrorDict[answer] = (answerSentenceList, question)
+#				ans_idx_tokens[i] = newAnsIdx
 
 		# check answer index changing
 		for begin_idx, end_idx in ans_idx_tokens:
@@ -361,6 +370,8 @@ def process_dataset(data, tokenizer, workers=None):
 	print("ans be same error")
 	print(ansBESameCount)
 
+	sentCount.write("whole answer count : "+str(wholeAnswerCount))
+	sentCount.write("\n")
 	sentCount.write("answer overlapping count : "+str(ansOverlapCount))
 	sentCount.write("\n")
 	sentCount.write("paren error count : "+str(parenErrorCount))
@@ -401,7 +412,7 @@ parser.add_argument('--log_dir', type=str, default='logFile', help='Path to log 
 parser.add_argument('--split', type=str, help='Filename for train/dev split')
 parser.add_argument('--num-workers', type=int, default=1)
 parser.add_argument('--tokenizer', type=str, default='spacy')
-parser.add_argument('--senSplitRules', type=int, default=0)
+parser.add_argument('--sentSplitRules', type=int, default=4)
 args = parser.parse_args()
 
 t0 = time.time()
@@ -411,7 +422,7 @@ print('Loading dataset %s' % in_file, file=sys.stderr)
 dataset = load_dataset(in_file)
 
 out_file = os.path.join(
-	args.out_dir, 'resultDir/%s-processed-%s-rule%s.txt' % (args.split, args.tokenizer, args.senSplitRules)
+	args.out_dir, 'resultDir/%s-processed-%s-rules%s.txt' % (args.split, args.tokenizer, str(args.sentSplitRules))
 )
 print('Will write to file %s' % out_file, file=sys.stderr)
 with open(out_file, 'w') as f:
