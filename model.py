@@ -286,8 +286,10 @@ class DocReader(object):
 			loss_s -= score_s[ans_sent_idx, target_s-sent_idx[ans_sent_idx][0]]
 			loss_e -= score_e[ans_sent_idx, target_e-sent_idx[ans_sent_idx][0]]
 			loss_sent -= score_sent[ans_sent_idx]
-		return loss_sent
-#		return loss_s + loss_e + loss_sent
+		if(self.args.sentence_attention==True):
+			return loss_s + loss_e + loss_sent
+		else:
+			return loss_s + loss_e
 
 	# --------------------------------------------------------------------------
 	# Learning
@@ -412,6 +414,7 @@ class DocReader(object):
 #		else:
 #			inputs = [e if e is None else Variable(e, volatile=True)
 #					  for e in ex[:8]]
+		# ex : x1, x1_c, x1_f, x1_mask, x2, x2_c, x2_f, x2_mask, sen_idx_list, ans_sen_idx, y_s, y_e, ids
 		if self.use_cuda:
 			inputs = [e if e is None else Variable(e.cuda(non_blocking=True),volatile=True) for e in ex[:-5]] + [ex[-5]] + [ex[-4]]
 		else:
@@ -420,7 +423,8 @@ class DocReader(object):
 		# Run forward
 		# batch * senNum * featureDim
 		score_s, score_e, score_sent = self.network(*inputs)
-		score_s, score_e = self.sent_merged_score(score_s, score_e, score_sent, inputs[-2], inputs[-1])
+		if(self.args.sentence_attention==True):
+			score_s, score_e = self.sent_merged_score(score_s, score_e, score_sent, inputs[-2], inputs[-1])
 		del inputs
 
 		# Decode predictions

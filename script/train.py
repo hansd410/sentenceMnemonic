@@ -119,7 +119,8 @@ def add_train_args(parser):
 						 help='Log state after every <display_iter> epochs')
 	general.add_argument('--sort-by-len', type='bool', default=True,
 						 help='Sort batches by length for speed')
-
+	general.add_argument('--sentence_attention', type='bool', default=True,
+						 help='sentence attention on off')
 
 def set_defaults(args):
 	"""Make sure the commandline arguments are initialized properly."""
@@ -381,10 +382,10 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 		answers: Map of qid --> list of accepted answers.
 	"""
 
-	rightSenWrong=open('logFile/rightSenWrong.txt','w')
-	wrongSenRight=open('logFile/wrongSenRight.txt','w')
-	wrongSenWrong=open('logFile/wrongSenWrong.txt','w')
-	rightSenWrongSenLen=open('logFile/rightSenWrong_SenLen.txt','w')
+	rightSenWrong=open('logFile/rightSenWrong1211.txt','w')
+	wrongSenRight=open('logFile/wrongSenRight1211.txt','w')
+	wrongSenWrong=open('logFile/wrongSenWrong1211.txt','w')
+	rightSenWrongSenLen=open('logFile/rightSenWrong_SenLen1211.txt','w')
 
 
 	# Make predictions
@@ -476,6 +477,8 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 				# right sent wrong
 				if(em_result==0):
 					rightSenWrongCount += 1
+					rightSenWrong.write(query)
+					rightSenWrong.write("\n")
 					rightSenWrong.write(' // '.join(ground_truths))
 					rightSenWrong.write("\n")
 					rightSenWrong.write(prediction)
