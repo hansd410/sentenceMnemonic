@@ -97,6 +97,8 @@ def add_train_args(parser):
 						   help='Save model + optimizer state after each epoch')
 	save_load.add_argument('--pretrained', type=str, default='',
 						   help='Path to a pretrained model to warm-start with')
+	save_load.add_argument('--test', type='bool', default=False,
+						   help='test on/off')
 	save_load.add_argument('--expand-dictionary', type='bool', default=False,
 						   help='Expand dictionary of pretrained model to ' +
 								'include training/dev words of new data')
@@ -413,8 +415,8 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 	ansSenLenDict = {}
 	predSenLenDict = {}
 	ansPredSenLenDiffDict = {}
-	for i in range(300):
-		ansPredSenLenDiffDict[i-150]=0
+	for i in range(500):
+		ansPredSenLenDiffDict[i-250]=0
 		ansSenLenDict[i]=0
 		predSenLenDict[i]=0
 
@@ -806,7 +808,7 @@ def main(args):
 	for epoch in range(start_epoch, args.num_epochs):
 		stats['epoch'] = epoch
 
-		if(args.pretrained != ''):
+		if(args.test == True):
 			if args.official_eval:
 				#result = validate_official(args, dev_loader, model, stats,
 				#						   dev_offsets, dev_texts, dev_answers)

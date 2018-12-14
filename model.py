@@ -370,14 +370,19 @@ class DocReader(object):
 
 		one_score_sent = scores_sent.new()
 		one_score_sent.resize_(scores_sent.size(1))
-		one_score_sent.fill_(1)
+
 
 		for i, (score_s, score_e, score_sent, sent_idx, ans_sent_idx) in enumerate(zip(scores_s, scores_e, scores_sent, sent_idx_list, ans_sent_idx_list)):
-			#score_s = score_s*one_score_sent.unsqueeze(1)
-			#score_e = score_e*one_score_sent.unsqueeze(1)
-		
-			score_s = score_s*score_sent.unsqueeze(1)
-			score_e = score_e*score_sent.unsqueeze(1)
+			# without sentence attention, first answer sentence chosen for test
+			one_score_sent.fill_(0)
+			one_score_sent[ans_sent_idx[0]].fill_(1)
+
+			if(self.args.sentence_attention==False):
+				score_s = score_s*one_score_sent.unsqueeze(1)
+				score_e = score_e*one_score_sent.unsqueeze(1)
+			else:
+				score_s = score_s*score_sent.unsqueeze(1)
+				score_e = score_e*score_sent.unsqueeze(1)
 
 			for j in range(len(sent_idx)):
 				merged_score_s[i,sent_idx[j][0]:sent_idx[j][1]] = score_s[j,0:sent_idx[j][1]-sent_idx[j][0]]
@@ -423,8 +428,7 @@ class DocReader(object):
 		# Run forward
 		# batch * senNum * featureDim
 		score_s, score_e, score_sent = self.network(*inputs)
-		if(self.args.sentence_attention==True):
-			score_s, score_e = self.sent_merged_score(score_s, score_e, score_sent, inputs[-2], inputs[-1])
+		score_s, score_e = self.sent_merged_score(score_s, score_e, score_sent, inputs[-2], inputs[-1])
 		del inputs
 
 		# Decode predictions
