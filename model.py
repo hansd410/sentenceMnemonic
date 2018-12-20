@@ -287,7 +287,10 @@ class DocReader(object):
 			loss_e -= score_e[ans_sent_idx, target_e-sent_idx[ans_sent_idx][0]]
 			loss_sent -= score_sent[ans_sent_idx]
 		if(self.args.sentence_attention==True):
-			return loss_s + loss_e + loss_sent
+			if(self.args.sentence_only ==True):
+				return loss_sent
+			else:
+				return loss_s + loss_e + loss_sent
 		else:
 			return loss_s + loss_e
 
@@ -377,12 +380,12 @@ class DocReader(object):
 			one_score_sent.fill_(0)
 			one_score_sent[ans_sent_idx[0]].fill_(1)
 
-			if(self.args.sentence_attention==False):
-				score_s = score_s*one_score_sent.unsqueeze(1)
-				score_e = score_e*one_score_sent.unsqueeze(1)
-			else:
+			if(self.args.sentence_attention==True):
 				score_s = score_s*score_sent.unsqueeze(1)
 				score_e = score_e*score_sent.unsqueeze(1)
+			else:
+				score_s = score_s*one_score_sent.unsqueeze(1)
+				score_e = score_e*one_score_sent.unsqueeze(1)
 
 			for j in range(len(sent_idx)):
 				merged_score_s[i,sent_idx[j][0]:sent_idx[j][1]] = score_s[j,0:sent_idx[j][1]-sent_idx[j][0]]

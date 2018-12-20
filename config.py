@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 MODEL_ARCHITECTURE = {
 	'model_type', 'embedding_dim', 'char_embedding_dim', 'hidden_size', 'char_hidden_size',
 	'doc_layers', 'question_layers', 'rnn_type', 'concat_rnn_layers', 'question_merge',
-	'use_qemb', 'use_exact_match', 'use_pos', 'use_ner', 'use_lemma', 'use_tf', 'align_hop', 'answer_hop','sentence_attention',
-	'sentence_sewon', 'max_context_len'
+	'use_qemb', 'use_exact_match', 'use_pos', 'use_ner', 'use_lemma', 'use_tf', 'align_hop', 'answer_hop',
+	'sentence_attention', 'sentence_only', 'sentence_sewon', 'max_context_len'
 }
 
 # Index of arguments concerning the model optimizer/training
@@ -54,6 +54,8 @@ def add_model_args(parser):
 					   help='RNN type: LSTM, GRU, or RNN')
 	model.add_argument('--sentence-attention', type='bool', default=True,
 						 help='sentence attention on off')
+	model.add_argument('--sentence-only', type='bool', default=True,
+						 help='train by sentence score only')
 	model.add_argument('--sentence-sewon', type='bool', default=False,
 						 help='sewon attention on off')
 	model.add_argument('--max-context-len', type=int, default=1e10,
