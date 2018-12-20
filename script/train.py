@@ -123,6 +123,11 @@ def add_train_args(parser):
 						 help='Sort batches by length for speed')
 	general.add_argument('--sentence_attention', type='bool', default=True,
 						 help='sentence attention on off')
+	general.add_argument('--sentence_sewon', type='bool', default=False,
+						 help='sewon attention on off')
+	general.add_argument('--max_context_len', type=int, default=1e10,
+						 help='max context length for sewon attention')
+
 
 def set_defaults(args):
 	"""Make sure the commandline arguments are initialized properly."""
@@ -238,6 +243,13 @@ def train(args, data_loader, model, global_stats):
 
 	# Run one epoch
 	for idx, ex in enumerate(data_loader):
+		# if batch data is too big(sewon min's architecture), pass it
+		sent_idx_list = ex[-5]
+		max_sent_len = max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list])
+		max_sent_count = max([len(sent) for sent in sent_idx_list])
+		maxSenSize = max_sent_len*max_sent_count
+		if(maxSenSize>args.max_context_len):
+			continue
 		train_loss.update(*model.update(ex))
 
 		if idx % args.display_iter == 0:
@@ -308,6 +320,13 @@ def validate_unofficial(args, data_loader, model, global_stats, mode):
 	# Make predictions
 	examples = 0
 	for ex in data_loader:
+		sent_idx_list = ex[-5]
+		max_sent_len = max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list])
+		max_sent_count = max([len(sent) for sent in sent_idx_list])
+		maxSenSize = max_sent_len*max_sent_count
+		if(maxSenSize>args.max_context_len):
+			continue
+
 		batch_size = ex[0].size(0)
 		(pred_s, pred_e, _), score_sent = model.predict(ex)
 		target_s, target_e = ex[-3:-1]
@@ -349,6 +368,13 @@ def validate_official(args, data_loader, model, global_stats,
 	# Run through examples
 	examples = 0
 	for ex in data_loader:
+		sent_idx_list = ex[-5]
+		max_sent_len = max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list])
+		max_sent_count = max([len(sent) for sent in sent_idx_list])
+		maxSenSize = max_sent_len*max_sent_count
+		if(maxSenSize>args.max_context_len):
+			continue
+
 		ex_id, batch_size = ex[-1], ex[0].size(0)
 		(pred_s, pred_e, _), score_sent = model.predict(ex)
 
@@ -424,6 +450,13 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 
 	examples = 0
 	for ex in data_loader:
+		sent_idx_list = ex[-5]
+		max_sent_len = max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list])
+		max_sent_count = max([len(sent) for sent in sent_idx_list])
+		maxSenSize = max_sent_len*max_sent_count
+		if(maxSenSize>args.max_context_len):
+			continue
+
 		ex_id, batch_size = ex[-1], ex[0].size(0)
 		(pred_s, pred_e, _), score_sent = model.predict(ex)
 
@@ -843,7 +876,6 @@ def main(args):
 						 stats['epoch'], model.updates))
 			model.save(args.model_file)
 			stats['best_valid'] = result[args.valid_metric]
-
 
 if __name__ == '__main__':
 	# Parse cmdline args and setup environment

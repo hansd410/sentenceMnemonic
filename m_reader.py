@@ -102,8 +102,12 @@ class MnemonicReader(nn.Module):
 		)
 
 		# MLP for sentence projections for sentnce embeddings
-		self.sent_embedding = nn.Conv1d(args.hidden_size * 2, args.hidden_size * 2, 1, 1, 0)
-		
+		if(self.args.sentence_sewon):
+			self.sent_w = nn.Linear(args.hidden_size * 2, 1, bias=False)
+			self.sent_w2 = nn.Linear(args.hidden_size * 2, (args.hidden_size * 2)**2, bias=False)
+			self.sent_w3 = nn.Linear(args.hidden_size * 2, 1, bias=False)
+		else:
+			self.sent_embedding = nn.Conv1d(args.hidden_size * 2, args.hidden_size * 2, 1, 1, 0)
 
 	def forward(self, x1, x1_c, x1_f, x1_mask, x2, x2_c, x2_f, x2_mask, sent_idx_list, ans_sent_idx_list):
 		"""Inputs:
@@ -145,42 +149,65 @@ class MnemonicReader(nn.Module):
 			qrnn_input.append(x2_f)
 
 		# Encode document with RNN
-		c = self.encoding_rnn(torch.cat(crnn_input, 2), x1_mask)
+		c = self.encoding_rnn(torch.cat(crnn_input, 2), x1_mask)# batch * datalen * fitdim
 		
 		# Encode question with RNN
-		q = self.encoding_rnn(torch.cat(qrnn_input, 2), x2_mask)
+		q = self.encoding_rnn(torch.cat(qrnn_input, 2), x2_mask)# batch * datalen * fitdim
+
+		# Sangdo. sentence attention of Min
+		if(self.args.sentence_sewon):
+			sent_word_emb = c.new()
+			sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
+								   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
+								   c.size(2)) # batch * max sent len * max word len * fit_dim
+			sent_word_emb.fill_(0)
+
+			for i, sent_idx in enumerate(sent_idx_list):
+				for j, (begin, end) in enumerate(sent_idx):
+					sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
+
+			masked_q = q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), 0)# batch_size x dataMaxLen x fitdim
+
+			beta = F.softmax(self.sent_w(masked_q),dim=1) # batch_size x dataMaxLen x 1
+			q_enc = torch.squeeze((beta * masked_q).sum(dim=1),1) # batch * fit_dim
+
+			d_w = self.sent_w2(sent_word_emb).reshape(sent_word_emb.size(0),sent_word_emb.size(1),sent_word_emb.size(2),self.args.hidden_size * 2,self.args.hidden_size * 2) # batch * sent Num * sent Len * fitdim * fitdim
+			#print(d_w.size())
+
+			# reshape for matmul
+			q_enc=q_enc.unsqueeze(1).unsqueeze(1).unsqueeze(-1).expand(q_enc.size(0),d_w.size(1),d_w.size(2),q_enc.size(1),1)
+			temp = torch.squeeze(torch.matmul(d_w,q_enc),-1)
+			h = temp.max(dim=2)[0]
+
+			sent_score = torch.squeeze(self.sent_w3(h),-1) # batch size * max sentence count
+
+
+			for i, sent_idx in enumerate(sent_idx_list):
+				if len(sent_idx) != sent_score.size(1):
+					sent_score[i, len(sent_idx):] = -1e10
 
 		# Paul. sentence attention addition
-		sent_word_emb = c.new()
-		sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
-							   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
-							   c.size(2)) # batch * max sent len * max word len * fit_dim
-		#sent_word_emb.fill_(-float('inf'))
-		sent_word_emb.fill_(-1e10)
+		else:
+			sent_word_emb = c.new()
+			sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
+								   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
+								   c.size(2)) # batch * max sent len * max word len * fit_dim
+			sent_word_emb.fill_(-1e10)
 
 
-		# masking tensor
-		#sent_score_mask = c.new()
-		#sent_score_mask.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]),c.size(2))
-		#sent_score_mask.fill_(0)
-		for i, sent_idx in enumerate(sent_idx_list):
-			for j, (begin, end) in enumerate(sent_idx):
-				#sent_score_mask[i,j,:]=1
-				#print(sent_word_emb[i, j, :end-begin, :].size())
-				#print(c[i, begin:end, :].size())
-				#print(begin, end, c.size(1))
-				sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
-		sent_word_emb = sent_word_emb.max(dim=2)[0]  # batch_size x max_sent_size x feat_dim
-		#sent_word_emb = sent_word_emb*sent_score_mask
+			for i, sent_idx in enumerate(sent_idx_list):
+				for j, (begin, end) in enumerate(sent_idx):
+					sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
+			sent_word_emb = sent_word_emb.max(dim=2)[0]  # batch_size x max_sent_size x feat_dim
 
-		sent_emb = self.sent_embedding(sent_word_emb.transpose(1, 2))  # batch_size x projected_feature_dim x max_sent_size
+			sent_emb = self.sent_embedding(sent_word_emb.transpose(1, 2))  # batch_size x projected_feature_dim x max_sent_size
 
-		q_proj = self.sent_embedding((q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), -float('inf'))).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
-		sent_score = (sent_emb * q_proj).sum(dim=1)  # batch_size x max_sent_size
+			q_proj = self.sent_embedding((q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), -float('inf'))).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
+			sent_score = (sent_emb * q_proj).sum(dim=1)  # batch_size x max_sent_size
 
-		for i, sent_idx in enumerate(sent_idx_list):
-			if len(sent_idx) != sent_score.size(1):
-				sent_score[i, len(sent_idx):] = -1e10
+			for i, sent_idx in enumerate(sent_idx_list):
+				if len(sent_idx) != sent_score.size(1):
+					sent_score[i, len(sent_idx):] = -1e10
 	
 		if self.training:
 			sent_score = F.log_softmax(sent_score, dim=1)
