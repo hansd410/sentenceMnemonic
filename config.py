@@ -54,7 +54,7 @@ def add_model_args(parser):
 					   help='RNN type: LSTM, GRU, or RNN')
 	model.add_argument('--sentence-attention', type='bool', default=True,
 						 help='sentence attention on off')
-	model.add_argument('--sentence-only', type='bool', default=True,
+	model.add_argument('--sentence-only', type='bool', default=False,
 						 help='train by sentence score only')
 	model.add_argument('--sentence-sewon', type='bool', default=False,
 						 help='sewon attention on off')
