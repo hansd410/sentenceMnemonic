@@ -70,7 +70,7 @@ class MnemonicReader(nn.Module):
 		self.self_aligners = nn.ModuleList()
 		self.self_SFUs = nn.ModuleList()
 		self.aggregate_rnns = nn.ModuleList()
-		for i in range(args.answer_hop):
+		for i in range(args.align_hop):
 			# interactive aligner
 			self.interactive_aligners.append(layers.SeqAttnMatch(doc_hidden_size, identity=True))
 			self.interactive_SFUs.append(layers.SFU(doc_hidden_size, 3 * doc_hidden_size))
