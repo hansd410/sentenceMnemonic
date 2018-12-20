@@ -224,17 +224,17 @@ class PointerNetwork(nn.Module):
 		return start_scores, end_scores
 
 class MemoryAnsPointer(nn.Module):
-	def __init__(self, x_size, y_size, hidden_size, hop=1, dropout_rate=0, normalize=True):
+	def __init__(self, x_size, y_size, hidden_size, answer_hop=1, dropout_rate=0, normalize=True):
 		super(MemoryAnsPointer, self).__init__()
 		self.normalize = normalize
 		self.hidden_size = hidden_size
-		self.hop = hop
+		self.answer_hop = answer_hop
 		self.dropout_rate = dropout_rate
 		self.FFNs_start = nn.ModuleList()
 		self.SFUs_start = nn.ModuleList()
 		self.FFNs_end = nn.ModuleList()
 		self.SFUs_end = nn.ModuleList()
-		for i in range(self.hop):
+		for i in range(self.answer_hop):
 			self.FFNs_start.append(FeedForwardNetwork(x_size+y_size+2*hidden_size, hidden_size, 1, dropout_rate))
 			self.SFUs_start.append(SFU(y_size, 2*hidden_size))
 			self.FFNs_end.append(FeedForwardNetwork(x_size+y_size+2*hidden_size, hidden_size, 1, dropout_rate))
@@ -248,7 +248,7 @@ class MemoryAnsPointer(nn.Module):
 		p_s = None
 		p_e = None
 		
-		for i in range(self.hop):
+		for i in range(self.answer_hop):
 			z_s_ = z_s.repeat(1,x.size(1),1) # [B, S, I]
 			s = self.FFNs_start[i](torch.cat([x, z_s_, x*z_s_], 2)).squeeze(2)
 			s.data.masked_fill_(x_mask.data, -float('inf'))

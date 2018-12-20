@@ -70,7 +70,7 @@ class MnemonicReader(nn.Module):
 		self.self_aligners = nn.ModuleList()
 		self.self_SFUs = nn.ModuleList()
 		self.aggregate_rnns = nn.ModuleList()
-		for i in range(args.hop):
+		for i in range(args.answer_hop):
 			# interactive aligner
 			self.interactive_aligners.append(layers.SeqAttnMatch(doc_hidden_size, identity=True))
 			self.interactive_SFUs.append(layers.SFU(doc_hidden_size, 3 * doc_hidden_size))
@@ -96,7 +96,7 @@ class MnemonicReader(nn.Module):
 			x_size=2*args.hidden_size, 
 			y_size=2*args.hidden_size, 
 			hidden_size=args.hidden_size, 
-			hop=args.hop,
+			answer_hop=args.answer_hop,
 			dropout_rate=args.dropout_rnn,
 			normalize=normalize
 		)
@@ -215,7 +215,7 @@ class MnemonicReader(nn.Module):
 			sent_score = F.softmax(sent_score, dim=1)
 		# Align and aggregate
 		c_check = c
-		for i in range(self.args.hop):
+		for i in range(self.args.align_hop):
 			q_tilde = self.interactive_aligners[i].forward(c_check, q, x2_mask)
 			c_bar = self.interactive_SFUs[i].forward(c_check, torch.cat([q_tilde, c_check * q_tilde, c_check - q_tilde], 2))
 			c_tilde = self.self_aligners[i].forward(c_bar, x1_mask)

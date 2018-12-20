@@ -121,13 +121,6 @@ def add_train_args(parser):
 						 help='Log state after every <display_iter> epochs')
 	general.add_argument('--sort-by-len', type='bool', default=True,
 						 help='Sort batches by length for speed')
-	general.add_argument('--sentence_attention', type='bool', default=True,
-						 help='sentence attention on off')
-	general.add_argument('--sentence_sewon', type='bool', default=False,
-						 help='sewon attention on off')
-	general.add_argument('--max_context_len', type=int, default=1e10,
-						 help='max context length for sewon attention')
-
 
 def set_defaults(args):
 	"""Make sure the commandline arguments are initialized properly."""
