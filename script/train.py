@@ -18,6 +18,7 @@ except ImportError:
 import os
 import subprocess
 import logging
+import re
 
 import utils, vector, config, data
 from model import DocReader
