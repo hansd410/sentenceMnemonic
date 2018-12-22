@@ -402,12 +402,14 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 		texts: Map of qid --> raw text of examples context (matches offsets).
 		answers: Map of qid --> list of accepted answers.
 	"""
-
-	rightSenWrong=open('logFile/rightSenWrong1211.txt','w')
-	wrongSenRight=open('logFile/wrongSenRight1211.txt','w')
-	wrongSenWrong=open('logFile/wrongSenWrong1211.txt','w')
-	rightSenWrongSenLen=open('logFile/rightSenWrong_SenLen1211.txt','w')
-
+	logFileTag = re.sub("\..*","",re.sub(".*/","",args.pretrained))
+	if(not os.path.exists('logFile/'+logFileTag)):
+		os.mkdir('logFile/'+logFileTag)
+	rightSenWrong=open('logFile/'+logFileTag+'/rightSenWrong.txt','w')
+	wrongSenRight=open('logFile/'+logFileTag+'/wrongSenRight.txt','w')
+	wrongSenWrong=open('logFile/'+logFileTag+'/wrongSenWrong.txt','w')
+	rightSenWrongSenLen=open('logFile/'+logFileTag+'/rightSenWrong_SenLen.txt','w')
+	countWithId = open('logFile/'+logFileTag+'/countWithId.json','w')
 
 	# Make predictions
 	eval_time = utils.Timer()
@@ -438,9 +440,9 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 		ansPredSenLenDiffDict[i-250]=0
 		ansSenLenDict[i]=0
 		predSenLenDict[i]=0
+	countWithIdDic = {}
 
 	rankList = []
-
 	examples = 0
 	for ex in data_loader:
 		sent_idx_list = ex[-5]
@@ -505,6 +507,8 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 				# right sent wrong
 				if(em_result==0):
 					rightSenWrongCount += 1
+					countWithIdDic[ex_id[i]]="RSWA"
+
 					rightSenWrong.write(query)
 					rightSenWrong.write("\n")
 					rightSenWrong.write(' // '.join(ground_truths))
@@ -546,6 +550,7 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 				# right sent right
 				else:
 					rightSenRightCount += 1
+					countWithIdDic[ex_id[i]]="RSRA"
 					if(pred_s_idx in target_s_idxs):
 						rightSenRightBeginCount += 1
 					if(pred_e_idx in target_e_idxs):
@@ -555,6 +560,7 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 				# wrong sent right
 				if(em_result==1):
 					wrongSenRightCount += 1
+					countWithIdDic[ex_id[i]]="WSRA"
 
 					wrongSenRight.write(query)
 					wrongSenRight.write("\n")
@@ -596,6 +602,8 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 				# wrong sent wrong
 				else:
 					wrongSenWrongCount += 1
+					countWithIdDic[ex_id[i]]="WSWA"
+
 					wrongSenWrong.write(query)
 					wrongSenWrong.write("\n")
 
@@ -626,29 +634,17 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 	logger.info("sentence validation - MAP : "+str(getMAP(rankList))+"\trank1Rate : "+str( rank1Count/wholeCount)+"\trank1/whole : "+str(rank1Count)+"/"+str(wholeCount))
 	logger.info("rightSenWrong / begin / end : "+str(rightSenWrongCount)+" / "+str(rightSenWrongBeginCount)+" / "+str(rightSenWrongEndCount)+"\twrongSenRight / begin / end : "+str(wrongSenRightCount )+" / "+str(wrongSenRightBeginCount)+" / "+str(wrongSenRightEndCount)+"\trightSenRight / begin / end : "+str(rightSenRightCount )+" / "+str(rightSenRightBeginCount)+" / "+str(rightSenRightEndCount)+"\twrongSenWrong / begin / end : "+str(wrongSenWrongCount )+" / "+str(wrongSenWrongBeginCount)+" / "+str(wrongSenWrongEndCount))
 
-	rightSenWrongSenLen.write("rightSenWrongDiff sen count")
-	rightSenWrongSenLen.write("\n")
-	rightSenWrongSenLen.write(str(rightSenWrongDiffSenCount))
-	rightSenWrongSenLen.write("\n\n")
-	rightSenWrongSenLen.write("ans sen len\n")
+	rightSenWrongSenLen.write("rightSenWrongDiff sen count\n"+str(rightSenWrongDiffSenCount)+"\n\nans sen len\n")
 	for key,value in sorted(ansSenLenDict.items()):
-		rightSenWrongSenLen.write(str(key))
-		rightSenWrongSenLen.write("\t")
-		rightSenWrongSenLen.write(str(value))
-		rightSenWrongSenLen.write("\n")
+		rightSenWrongSenLen.write(str(key)+"\t"+str(value)+"\n")
 	rightSenWrongSenLen.write("\npred sen len\n")
 	for key,value in sorted(predSenLenDict.items()):
-		rightSenWrongSenLen.write(str(key))
-		rightSenWrongSenLen.write("\t")
-		rightSenWrongSenLen.write(str(value))
-		rightSenWrongSenLen.write("\n")
+		rightSenWrongSenLen.write(str(key)+"\t"+str(value)+"\n")
 	rightSenWrongSenLen.write("\nans pred sen len diff\n")
 	for key,value in sorted(ansPredSenLenDiffDict.items()):
-		rightSenWrongSenLen.write(str(key))
-		rightSenWrongSenLen.write("\t")
-		rightSenWrongSenLen.write(str(value))
-		rightSenWrongSenLen.write("\n")
+		rightSenWrongSenLen.write(str(key)+"\t"+str(value)+"\n")
 
+	json.dump(countWithIdDic,countWithId)
 
 	logger.info('dev valid official: Epoch = %d | EM = %.2f | ' %
 				(global_stats['epoch'], exact_match.avg * 100) +
