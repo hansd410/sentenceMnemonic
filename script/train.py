@@ -411,6 +411,7 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 	wrongSenWrong=open('logFile/'+logFileTag+'/wrongSenWrong.txt','w')
 	rightSenWrongSenLen=open('logFile/'+logFileTag+'/rightSenWrong_SenLen.txt','w')
 	countWithId = open('logFile/'+logFileTag+'/countWithId.json','w')
+	logger.basicConfig(filename='logFile/'+logFileTag+'/score.log')
 
 	# Make predictions
 	eval_time = utils.Timer()
@@ -652,6 +653,7 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 				'F1 = %.2f | examples = %d | valid time = %.2f (s)' %
 				(f1.avg * 100, examples, eval_time.time()))
 
+	
 	return {'exact_match': exact_match.avg * 100, 'f1': f1.avg * 100}
 
 
