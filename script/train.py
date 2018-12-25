@@ -411,7 +411,7 @@ def validate_official_with_sentence(args, data_loader, model, global_stats,
 	wrongSenWrong=open('logFile/'+logFileTag+'/wrongSenWrong.txt','w')
 	rightSenWrongSenLen=open('logFile/'+logFileTag+'/rightSenWrong_SenLen.txt','w')
 	countWithId = open('logFile/'+logFileTag+'/countWithId.json','w')
-	logger.basicConfig(filename='logFile/'+logFileTag+'/score.log')
+	logger.addHandler(logging.FileHandler('logFile/'+logFileTag+'/score.log'))
 
 	# Make predictions
 	eval_time = utils.Timer()
