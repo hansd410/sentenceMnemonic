@@ -290,7 +290,9 @@ class DocReader(object):
 			if(self.args.sentence_only ==True):
 				return loss_sent
 			else:
-				return loss_s + loss_e + loss_sent
+				# loss weight applied
+				w = self.args.sent_loss_weight
+				return (1-w)*(loss_s + loss_e) + w*loss_sent
 		else:
 			return loss_s + loss_e
 

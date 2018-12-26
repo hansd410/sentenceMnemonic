@@ -16,7 +16,7 @@ MODEL_ARCHITECTURE = {
 	'model_type', 'embedding_dim', 'char_embedding_dim', 'hidden_size', 'char_hidden_size',
 	'doc_layers', 'question_layers', 'rnn_type', 'concat_rnn_layers', 'question_merge',
 	'use_qemb', 'use_exact_match', 'use_pos', 'use_ner', 'use_lemma', 'use_tf', 'align_hop', 'answer_hop',
-	'sentence_attention', 'sentence_only', 'sentence_sewon', 'max_context_len'
+	'sentence_attention', 'sentence_only', 'sentence_sewon', 'max_context_len', 'sent_loss_weight'
 }
 
 # Index of arguments concerning the model optimizer/training
@@ -60,7 +60,8 @@ def add_model_args(parser):
 						 help='sewon attention on off')
 	model.add_argument('--max-context-len', type=int, default=1e10,
 						 help='max context length for sewon attention')
-
+	model.add_argument('--sent-loss-weight', type=float, default=0.5,
+						 help='sentence loss weight')
 
 	# Model specific details
 	detail = parser.add_argument_group('Reader Model Details')
