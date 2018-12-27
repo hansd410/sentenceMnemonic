@@ -383,8 +383,9 @@ class DocReader(object):
 			one_score_sent[ans_sent_idx[0]].fill_(1)
 
 			if(self.args.sentence_attention==True):
-				score_s = score_s*score_sent.unsqueeze(1)
-				score_e = score_e*score_sent.unsqueeze(1)
+				w = self.args.sent_loss_weight
+				score_s = (score_s**(1-w))*(score_sent**w).unsqueeze(1)
+				score_e = (score_e**(1-w))*(score_sent**w).unsqueeze(1)
 			else:
 				score_s = score_s*one_score_sent.unsqueeze(1)
 				score_e = score_e*one_score_sent.unsqueeze(1)
