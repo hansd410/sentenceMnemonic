@@ -154,6 +154,10 @@ class MnemonicReader(nn.Module):
 		# Encode question with RNN
 		q = self.encoding_rnn(torch.cat(qrnn_input, 2), x2_mask)# batch * datalen * fitdim
 
+		if(self.args.encode_fix ==True):
+			c=c.detach()
+			q=q.detach()
+
 		# Sangdo. sentence attention of Min
 		if(self.args.sentence_sewon):
 			sent_word_emb = c.new()

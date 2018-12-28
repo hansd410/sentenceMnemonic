@@ -15,15 +15,16 @@ logger = logging.getLogger(__name__)
 MODEL_ARCHITECTURE = {
 	'model_type', 'embedding_dim', 'char_embedding_dim', 'hidden_size', 'char_hidden_size',
 	'doc_layers', 'question_layers', 'rnn_type', 'concat_rnn_layers', 'question_merge',
-	'use_qemb', 'use_exact_match', 'use_pos', 'use_ner', 'use_lemma', 'use_tf', 'align_hop', 'answer_hop',
-	'sentence_attention', 'sentence_only', 'sentence_sewon', 'max_context_len', 'sent_loss_weight'
+	'use_qemb', 'use_exact_match', 'use_pos', 'use_ner', 'use_lemma', 'use_tf'
 }
 
 # Index of arguments concerning the model optimizer/training
 MODEL_OPTIMIZER = {
 	'fix_embeddings', 'optimizer', 'learning_rate', 'momentum', 'weight_decay',
 	'rho', 'eps', 'max_len', 'grad_clipping', 'tune_partial', 
-	'rnn_padding', 'dropout_rnn', 'dropout_rnn_output', 'dropout_emb'
+	'rnn_padding', 'dropout_rnn', 'dropout_rnn_output', 'dropout_emb',
+	'align_hop', 'answer_hop', 'encode_fix',
+	'sentence_attention', 'sentence_only', 'sentence_sewon', 'max_context_len', 'sent_loss_weight'
 }
 
 
@@ -52,16 +53,6 @@ def add_model_args(parser):
 					   help='Number of encoding layers for question')
 	model.add_argument('--rnn-type', type=str, default='lstm',
 					   help='RNN type: LSTM, GRU, or RNN')
-	model.add_argument('--sentence-attention', type='bool', default=True,
-						 help='sentence attention on off')
-	model.add_argument('--sentence-only', type='bool', default=False,
-						 help='train by sentence score only')
-	model.add_argument('--sentence-sewon', type='bool', default=False,
-						 help='sewon attention on off')
-	model.add_argument('--max-context-len', type=int, default=1e10,
-						 help='max context length for sewon attention')
-	model.add_argument('--sent-loss-weight', type=float, default=0.5,
-						 help='sentence loss weight')
 
 	# Model specific details
 	detail = parser.add_argument_group('Reader Model Details')
@@ -81,10 +72,6 @@ def add_model_args(parser):
 						help='Whether to use lemma features')
 	detail.add_argument('--use-tf', type='bool', default=True,
 						help='Whether to use term frequency features')
-	detail.add_argument('--align-hop', type=int, default=2,
-						help='The number of hops for aligner in m-reader')
-	detail.add_argument('--answer-hop', type=int, default=2,
-						help='The number of hops for the answer pointer in m-reader')
 
 	# Optimization details
 	optim = parser.add_argument_group('Reader Optimization')
@@ -117,6 +104,25 @@ def add_model_args(parser):
 	optim.add_argument('--max-len', type=int, default=15,
 					   help='The max span allowed during decoding')
 
+	optim.add_argument('--align-hop', type=int, default=2,
+						help='The number of hops for aligner in m-reader')
+	optim.add_argument('--answer-hop', type=int, default=2,
+						help='The number of hops for the answer pointer in m-reader')
+
+	optim.add_argument('--encode-fix', type='bool', default=False,
+						help='fix rnn encoder (for fine-tuning)')
+
+	optim.add_argument('--sentence-attention', type='bool', default=True,
+						 help='sentence attention on off')
+	optim.add_argument('--sentence-only', type='bool', default=False,
+						 help='train by sentence score only')
+	optim.add_argument('--sentence-sewon', type='bool', default=False,
+						 help='sewon attention on off')
+	optim.add_argument('--max-context-len', type=int, default=1e10,
+						 help='max context length for sewon attention')
+	optim.add_argument('--sent-loss-weight', type=float, default=0.5,
+						 help='sentence loss weight')
+
 
 def get_model_args(args):
 	"""Filter args for model ones.
@@ -140,12 +146,13 @@ def override_model_args(old_args, new_args):
 	"""
 	global MODEL_OPTIMIZER
 	old_args, new_args = vars(old_args), vars(new_args)
-	for k in old_args.keys():
-		if k in new_args and old_args[k] != new_args[k]:
-			if k in MODEL_OPTIMIZER:
-				logger.info('Overriding saved %s: %s --> %s' %
-							(k, old_args[k], new_args[k]))
-				old_args[k] = new_args[k]
-			else:
-				logger.info('Keeping saved %s: %s' % (k, old_args[k]))
-	return argparse.Namespace(**old_args)
+#	for k in old_args.keys():
+#		if k in new_args and old_args[k] != new_args[k]:
+#			if k in MODEL_OPTIMIZER:
+#				logger.info('Overriding saved %s: %s --> %s' %
+#							(k, old_args[k], new_args[k]))
+#				old_args[k] = new_args[k]
+#			else:
+#				logger.info('Keeping saved %s: %s' % (k, old_args[k]))
+
+	return argparse.Namespace(**new_args)
