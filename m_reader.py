@@ -17,7 +17,48 @@ from torch.autograd import Variable
 # Network
 # ------------------------------------------------------------------------------
 
+class pwimNet(nn.Module):
+	def __init__(self):
+		super().__init__()
+		def make_conv(n_in,n_out):
+			conv = nn.Conv2d(n_in,n_out,3,padding=1)
+			conv.bias.data.zero_()
+			nn.init.xavier_normal_(conv.weight)
+			return conv
+		self.conv1 = make_conv(12,128)
+		self.conv2 = make_conv(128,164)
+		self.conv3 = make_conv(164,192)
+		self.conv4 = make_conv(192,192)
+		self.conv5 = make_conv(192,128)
+		self.maxpool2 = nn.MaxPool2d(2,ceil_mode=True)
+		self.dnn = nn.Linear(128,128)
+		self.output = nn.Linear(128,1)
+		self.input_len = 32
 
+	# pad zeros to make pad*pad size
+	def hard_pad2d(self,x,pad):
+		def pad_side(idx):
+			pad_len = max(pad-x.size(idx),0)
+			return [0,pad_len]
+		padding=pad_side(3)
+		padding.extend(pad_side(2))
+		x = F.pad(x,padding)
+		return x[:,:,:pad,:pad]
+
+	def forward(self,x):
+		batchSize = x.size(0)
+		x = x.permute(0,3,1,2,4).contiguous()
+		x = x.view(-1,x.size(2),x.size(3),x.size(4))# (batch * sent num) * 12 * query len * context len
+		x = self.hard_pad2d(x,self.input_len)
+		x = self.maxpool2(F.relu(self.conv1(x)))
+		x = self.maxpool2(F.relu(self.conv2(x)))
+		x = self.maxpool2(F.relu(self.conv3(x)))
+		x = self.maxpool2(F.relu(self.conv4(x)))
+		x = self.maxpool2(F.relu(self.conv5(x)))
+		x = F.relu(self.dnn(x.view(x.size(0),-1)))
+		x = self.output(x).squeeze().contiguous().view(batchSize,-1)
+		return x
+	
 class MnemonicReader(nn.Module):
 	RNN_TYPES = {'lstm': nn.LSTM, 'gru': nn.GRU, 'rnn': nn.RNN}
 	CELL_TYPES = {'lstm': nn.LSTMCell, 'gru': nn.GRUCell, 'rnn': nn.RNNCell}
@@ -107,7 +148,11 @@ class MnemonicReader(nn.Module):
 			self.sent_w2 = nn.Linear(args.hidden_size * 2, (args.hidden_size * 2)**2, bias=False)
 			self.sent_w3 = nn.Linear(args.hidden_size * 2, 1, bias=False)
 		else:
-			self.sent_embedding = nn.Conv1d(args.hidden_size * 2, args.hidden_size * 2, 1, 1, 0)
+			if(self.args.sentence_cnn):
+				self.pwim = pwimNet()
+			else:
+				self.sent_embedding = nn.Conv1d(args.hidden_size * 2, args.hidden_size * 2, 1, 1, 0)
+
 
 	def forward(self, x1, x1_c, x1_f, x1_mask, x2, x2_c, x2_f, x2_mask, sent_idx_list, ans_sent_idx_list):
 		"""Inputs:
@@ -123,6 +168,8 @@ class MnemonicReader(nn.Module):
 		sentence_index_list
 		answer_sentence_index_list
 		"""
+
+
 		# Embed both document and question
 		x1_emb = self.embedding(x1)
 		x2_emb = self.embedding(x2)
@@ -185,33 +232,125 @@ class MnemonicReader(nn.Module):
 
 			sent_score = torch.squeeze(self.sent_w3(h),-1) # batch size * max sentence count
 
-
 			for i, sent_idx in enumerate(sent_idx_list):
 				if len(sent_idx) != sent_score.size(1):
 					sent_score[i, len(sent_idx):] = -1e10
-
-		# Paul. sentence attention addition
 		else:
-			sent_word_emb = c.new()
-			sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
-								   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
-								   c.size(2)) # batch * max sent len * max word len * fit_dim
-			sent_word_emb.fill_(-1e10)
+			# sangdo. PWIM
+			if(self.args.sentence_cnn):
+				# MAKE SIM CUBE
+				sent_word_emb = c.new()
+				sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
+									   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
+									   c.size(2)) # batch * max sent len * max word len * fit_dim
+				sent_word_emb.fill_(0)
+
+				sent_word_mask = c.new()
+				sent_word_mask.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
+									   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list])) # batch * max sent len * max word len
+				sent_word_mask.fill_(0)
+
+				for i, sent_idx in enumerate(sent_idx_list):
+					for j, (begin, end) in enumerate(sent_idx):
+						sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
+						sent_word_mask[i, j, :end-begin] = 1
+
+				sim_cube = c.new()
+				sim_cube.resize_(sent_word_emb.size(0),12,q.size(1),sent_word_emb.size(1),sent_word_emb.size(2)) # batch * 12* query word len * max sent len * max sent word len
+				q_f = q[:,:,self.args.hidden_size:]
+				q_b = q[:,:,:self.args.hidden_size]
+				sent_word_emb_f = sent_word_emb[:,:,:,self.args.hidden_size:]
+				sent_word_emb_b = sent_word_emb[:,:,:,:self.args.hidden_size]
+
+				def compute_sim(query_prism,sent_word_prism):
+					query_prism_len = query_prism.norm(dim=4)
+					sent_word_prism_len = sent_word_prism.norm(dim=4)
+
+					dot_prod = torch.matmul(query_prism.unsqueeze(4),sent_word_prism.unsqueeze(5))
+					dot_prod = dot_prod.squeeze(4).squeeze(4)
+					cos_dist = dot_prod / (query_prism_len*sent_word_prism_len+1E-8)
+					l2_dist = (query_prism-sent_word_prism).norm(dim=4)
+					return torch.stack([dot_prod,cos_dist,l2_dist],1)
+				def compute_prism(query, sent_word): 
+					query_prism = query.repeat(sent_word.size(1),sent_word.size(2),1,1,1)
+					sent_word_prism = sent_word.repeat(query.size(1),1,1,1,1)
+					query_prism = query_prism.permute(2,3,0,1,4).contiguous()
+					sent_word_prism = sent_word_prism.permute(1,0,2,3,4).contiguous()
+					return compute_sim(query_prism, sent_word_prism)
+
+				sim_cube[:,0:3,:,:,:]=compute_prism(q,sent_word_emb)
+				sim_cube[:,3:6,:,:,:]=compute_prism(q_f,sent_word_emb_f)
+				sim_cube[:,6:9,:,:,:]=compute_prism(q_b,sent_word_emb_b)
+				sim_cube[:,9:12,:,:,:]=compute_prism(q_f+q_b,sent_word_emb_f+sent_word_emb_b)
+
+				# make pad cube
+				query_mask = (1-x2_mask).type(c.type()).repeat(sim_cube.size(1),sim_cube.size(3),sim_cube.size(4),1,1) # x2_mask, padding =1 
+				query_mask = query_mask.permute(3,0,4,1,2)
+				sent_mask = sent_word_mask.repeat(sim_cube.size(1),sim_cube.size(2),1,1,1)
+				sent_mask = sent_mask.permute(2,0,1,3,4)
+				pad_cube = 1-query_mask*sent_mask # padding = 1
+
+				truncate = self.pwim.input_len
+				if truncate is not None:
+					sim_cube = sim_cube[:,:,:truncate,:,:truncate].contiguous()
+					pad_cube = pad_cube[:,:,:sim_cube.size(2),:,:sim_cube.size(4)].contiguous()
+
+				# MAKE FOCUS CUBE
+				neg_magic = -10000
+				sim_cube = neg_magic*pad_cube+sim_cube
+				mask = c.new()
+				mask = mask.resize_(*pad_cube.size())
+				mask[:,:,:,:,:] = 0.1
+
+				# make mask
+				def build_mask(index):
+					# batch * query word len * max sent len * max sent word len
+					max_mask = sim_cube[:,index].clone()
+					for _ in range(min(sim_cube.size(2),sim_cube.size(4))):
+						values,indices = torch.max(max_mask.view(sim_cube.size(0),sim_cube.size(3),-1),2)
+						row_indices = indices/sim_cube.size(4) # query indices
+						col_indices = indices%sim_cube.size(4) # sent indices
+						#row_indices = row_indices.unsqueeze()
+						#col_indices = col_indices.unsqueeze().unsqueeze()
+						for i, (row_i,col_i,val) in enumerate(zip(row_indices,col_indices,values)):
+							for j in range(max_mask.size(2)):
+								if (val[j] < (neg_magic/2)):
+									continue
+								mask[i,:,row_i[j],j,col_i[j]]=1
+								max_mask[i,row_i[j],j,:]=neg_magic
+								max_mask[i,:,j,col_i[j]]=neg_magic
+				
+				build_mask(9) 
+				build_mask(10)
+				focus_cube = mask*sim_cube*(1-pad_cube)
+
+				# APPLY PWIM
+				sent_score = self.pwim(focus_cube)
+				for i, sent_idx in enumerate(sent_idx_list):
+					if len(sent_idx) != sent_score.size(1):
+						sent_score[i, len(sent_idx):] = -1e10
+			# Paul. sentence attention addition
+			else:
+				sent_word_emb = c.new()
+				sent_word_emb.resize_(c.size(0), max([len(sent) for sent in sent_idx_list]), 
+									   max([max([idx[1]-idx[0] for idx in sent]) for sent in sent_idx_list]),
+									   c.size(2)) # batch * max sent len * max word len * fit_dim
+				sent_word_emb.fill_(-1e10)
 
 
-			for i, sent_idx in enumerate(sent_idx_list):
-				for j, (begin, end) in enumerate(sent_idx):
-					sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
-			sent_word_emb = sent_word_emb.max(dim=2)[0]  # batch_size x max_sent_size x feat_dim
+				for i, sent_idx in enumerate(sent_idx_list):
+					for j, (begin, end) in enumerate(sent_idx):
+						sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
+				sent_word_emb = sent_word_emb.max(dim=2)[0]  # batch_size x max_sent_size x feat_dim
 
-			sent_emb = self.sent_embedding(sent_word_emb.transpose(1, 2))  # batch_size x projected_feature_dim x max_sent_size
+				sent_emb = self.sent_embedding(sent_word_emb.transpose(1, 2))  # batch_size x projected_feature_dim x max_sent_size
 
-			q_proj = self.sent_embedding((q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), -float('inf'))).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
-			sent_score = (sent_emb * q_proj).sum(dim=1)  # batch_size x max_sent_size
+				q_proj = self.sent_embedding((q.masked_fill(x2_mask.unsqueeze(2).expand_as(q), -float('inf'))).max(dim=1)[0].unsqueeze(2))  # batch_size x project_feature_dim x 1
+				sent_score = (sent_emb * q_proj).sum(dim=1)  # batch_size x max_sent_size
 
-			for i, sent_idx in enumerate(sent_idx_list):
-				if len(sent_idx) != sent_score.size(1):
-					sent_score[i, len(sent_idx):] = -1e10
+				for i, sent_idx in enumerate(sent_idx_list):
+					if len(sent_idx) != sent_score.size(1):
+						sent_score[i, len(sent_idx):] = -1e10
 	
 		if self.training:
 			sent_score = F.log_softmax(sent_score, dim=1)

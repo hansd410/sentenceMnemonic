@@ -24,7 +24,7 @@ MODEL_OPTIMIZER = {
 	'rho', 'eps', 'max_len', 'grad_clipping', 'tune_partial', 
 	'rnn_padding', 'dropout_rnn', 'dropout_rnn_output', 'dropout_emb',
 	'align_hop', 'answer_hop', 'encode_fix',
-	'sentence_attention', 'sentence_only', 'sentence_sewon', 'max_context_len', 'sent_loss_weight'
+	'sentence_attention', 'sentence_only', 'sentence_sewon', 'sentence_cnn', 'max_context_len', 'sent_loss_weight'
 }
 
 
@@ -118,6 +118,8 @@ def add_model_args(parser):
 						 help='train by sentence score only')
 	optim.add_argument('--sentence-sewon', type='bool', default=False,
 						 help='sewon attention on off')
+	optim.add_argument('--sentence-cnn', type='bool', default=False,
+						 help='sewon cnn on off')
 	optim.add_argument('--max-context-len', type=int, default=1e10,
 						 help='max context length for sewon attention')
 	optim.add_argument('--sent-loss-weight', type=float, default=0.5,
