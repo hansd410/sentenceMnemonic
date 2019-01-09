@@ -47,7 +47,7 @@ class pwimNet(nn.Module):
 
 	def forward(self,x):
 		batchSize = x.size(0)
-		x = x.permute(0,3,1,2,4).contiguous()
+		x = x.permute(0,3,1,2,4).contiguous()# batch * sent num * 12 * query len * context len
 		x = x.view(-1,x.size(2),x.size(3),x.size(4))# (batch * sent num) * 12 * query len * context len
 		x = self.hard_pad2d(x,self.input_len)
 		x = self.maxpool2(F.relu(self.conv1(x)))
@@ -255,8 +255,6 @@ class MnemonicReader(nn.Module):
 						sent_word_emb[i, j, :end-begin, :] = c[i, begin:end, :]
 						sent_word_mask[i, j, :end-begin] = 1
 
-				sim_cube = c.new()
-				sim_cube.resize_(sent_word_emb.size(0),12,q.size(1),sent_word_emb.size(1),sent_word_emb.size(2)) # batch * 12* query word len * max sent len * max sent word len
 				q_f = q[:,:,self.args.hidden_size:]
 				q_b = q[:,:,:self.args.hidden_size]
 				sent_word_emb_f = sent_word_emb[:,:,:,self.args.hidden_size:]
@@ -278,15 +276,17 @@ class MnemonicReader(nn.Module):
 					sent_word_prism = sent_word_prism.permute(1,0,2,3,4).contiguous()
 					return compute_sim(query_prism, sent_word_prism)
 
+				sim_cube = c.new()
+				sim_cube.resize_(sent_word_emb.size(0),12,q.size(1),sent_word_emb.size(1),sent_word_emb.size(2)) # batch * 12* query word len * max sent len * max sent word len
 				sim_cube[:,0:3,:,:,:]=compute_prism(q,sent_word_emb)
 				sim_cube[:,3:6,:,:,:]=compute_prism(q_f,sent_word_emb_f)
 				sim_cube[:,6:9,:,:,:]=compute_prism(q_b,sent_word_emb_b)
 				sim_cube[:,9:12,:,:,:]=compute_prism(q_f+q_b,sent_word_emb_f+sent_word_emb_b)
 
 				# make pad cube
-				query_mask = (1-x2_mask).type(c.type()).repeat(sim_cube.size(1),sim_cube.size(3),sim_cube.size(4),1,1) # x2_mask, padding =1 
+				query_mask = (1-x2_mask).type(c.type()).repeat(sim_cube.size(1),sim_cube.size(3),sim_cube.size(4),1,1) # x2_mask : padding =1 
 				query_mask = query_mask.permute(3,0,4,1,2)
-				sent_mask = sent_word_mask.repeat(sim_cube.size(1),sim_cube.size(2),1,1,1)
+				sent_mask = sent_word_mask.repeat(sim_cube.size(1),sim_cube.size(2),1,1,1) # padding =0
 				sent_mask = sent_mask.permute(2,0,1,3,4)
 				pad_cube = 1-query_mask*sent_mask # padding = 1
 
@@ -299,26 +299,26 @@ class MnemonicReader(nn.Module):
 				neg_magic = -10000
 				sim_cube = neg_magic*pad_cube+sim_cube
 				mask = c.new()
-				mask = mask.resize_(*pad_cube.size())
+				mask = mask.resize_(*pad_cube.size())# batch * 12 * query word len * max sent len * max sent word len
 				mask[:,:,:,:,:] = 0.1
 
 				# make mask
 				def build_mask(index):
-					# batch * query word len * max sent len * max sent word len
-					max_mask = sim_cube[:,index].clone()
-					for _ in range(min(sim_cube.size(2),sim_cube.size(4))):
-						values,indices = torch.max(max_mask.view(sim_cube.size(0),sim_cube.size(3),-1),2)
-						row_indices = indices/sim_cube.size(4) # query indices
-						col_indices = indices%sim_cube.size(4) # sent indices
+					max_mask = sim_cube[:,index].clone()# batch * query word len * max sent len * max sent word len
+					max_mask = max_mask.permute(0,2,1,3).contiguous()# batch * max sent len * query word len * max sent word len
+					for _ in range(min(max_mask.size(2),max_mask.size(3))):
+						values,indices = torch.max(max_mask.view(max_mask.size(0),max_mask.size(1),-1),2)
+						row_indices = indices/max_mask.size(3) # query indices
+						col_indices = indices%max_mask.size(3) # sent indices
 						#row_indices = row_indices.unsqueeze()
 						#col_indices = col_indices.unsqueeze().unsqueeze()
 						for i, (row_i,col_i,val) in enumerate(zip(row_indices,col_indices,values)):
-							for j in range(max_mask.size(2)):
+							for j in range(max_mask.size(1)):
 								if (val[j] < (neg_magic/2)):
 									continue
 								mask[i,:,row_i[j],j,col_i[j]]=1
-								max_mask[i,row_i[j],j,:]=neg_magic
-								max_mask[i,:,j,col_i[j]]=neg_magic
+								max_mask[i,j,row_i[j],:]=neg_magic
+								max_mask[i,j,:,col_i[j]]=neg_magic
 				
 				build_mask(9) 
 				build_mask(10)
